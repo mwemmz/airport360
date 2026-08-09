@@ -14,6 +14,7 @@ services:
     runtime: python
     plan: free
     region: oregon
+    rootDir: backend
     buildCommand: pip install -r requirements.txt -r requirements-turso.txt
     startCommand: alembic upgrade head && python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
@@ -36,7 +37,8 @@ services:
     name: airport360-frontend
     runtime: static
     buildCommand: npm ci && npm run build
-    staticPublishPath: ./dist
+    staticPublishPath: dist
+    rootDir: frontend
     routes:
       - type: rewrite
         source: /<.*>
