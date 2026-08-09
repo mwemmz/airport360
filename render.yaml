@@ -19,6 +19,9 @@ services:
     startCommand: alembic upgrade head && python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.5
+        comment: "Must stay <=3.13: libsql-experimental (Turso driver) has no cp314 wheels"
       - key: DATABASE_URL
         sync: false
         comment: "Turso URL, e.g. sqlite+libsql://<db>-<org>.turso.io?secure=true"
