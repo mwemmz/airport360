@@ -1,5 +1,9 @@
 const TOKEN_KEY = "airport360_token";
 
+// VITE_API_URL points the built app at the deployed backend (e.g. Render).
+// In local dev it stays empty and the Vite proxy forwards /v1 to localhost:8000.
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined ?? "").replace(/\/+$/, "");
+
 export type User = {
   id: number;
   email: string;
@@ -34,7 +38,7 @@ export async function api<T>(
   const token = getToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const resp = await fetch(`/v1${path}`, { ...options, headers });
+  const resp = await fetch(`${API_BASE}/v1${path}`, { ...options, headers });
   if (resp.status === 401) {
     clearToken();
     window.location.href = "/login";

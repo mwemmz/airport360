@@ -13,6 +13,23 @@ from .core import (
     User,
     Vendor,
 )
+from .operations import (
+    Alert,
+    Baggage,
+    BaggageScan,
+    BookingReferral,
+    CargoShipment,
+    Complaint,
+    Facility,
+    Flight,
+    Incident,
+    MaintenanceRequest,
+    ModelRun,
+    Passenger,
+    QueuePrediction,
+    QueueSample,
+    TravelAgencyPartner,
+)
 
 __all__ = [
     "Site",
@@ -28,4 +45,19 @@ __all__ = [
     "PurchaseOrder",
     "Expense",
     "AuditLog",
+    "Flight",
+    "Passenger",
+    "Baggage",
+    "BaggageScan",
+    "QueueSample",
+    "QueuePrediction",
+    "ModelRun",
+    "Incident",
+    "MaintenanceRequest",
+    "CargoShipment",
+    "Facility",
+    "Alert",
+    "Complaint",
+    "TravelAgencyPartner",
+    "BookingReferral",
 ]

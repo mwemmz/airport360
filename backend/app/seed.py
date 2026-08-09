@@ -24,7 +24,33 @@ from .models.core import (
     User,
     Vendor,
 )
-from .security import ROLE_ADMIN, ROLE_APPROVER, ROLE_EXECUTIVE, ROLE_FINANCE, ROLE_HR, ROLE_STAFF, hash_password
+from .models.operations import (
+    Alert,
+    Baggage,
+    BaggageScan,
+    BookingReferral,
+    CargoShipment,
+    Complaint,
+    Facility,
+    Flight,
+    Incident,
+    MaintenanceRequest,
+    Passenger,
+    QueuePrediction,
+    QueueSample,
+    TravelAgencyPartner,
+)
+from .security import (
+    ROLE_ADMIN,
+    ROLE_APPROVER,
+    ROLE_EXECUTIVE,
+    ROLE_FINANCE,
+    ROLE_HR,
+    ROLE_OPS,
+    ROLE_PASSENGER,
+    ROLE_STAFF,
+    hash_password,
+)
 
 rng = Random(42)
 
@@ -70,7 +96,7 @@ def seed_all() -> None:
         db.add_all(sites)
         db.flush()
 
-        roles = [Role(name=r) for r in [ROLE_ADMIN, ROLE_EXECUTIVE, ROLE_FINANCE, ROLE_HR, ROLE_APPROVER, ROLE_STAFF]]
+        roles = [Role(name=r) for r in [ROLE_ADMIN, ROLE_EXECUTIVE, ROLE_FINANCE, ROLE_HR, ROLE_APPROVER, ROLE_STAFF, ROLE_OPS, ROLE_PASSENGER]]
         db.add_all(roles)
         db.flush()
 
@@ -269,6 +295,8 @@ def seed_all() -> None:
             user_specs.append((ROLE_FINANCE, site, f"Finance Officer {site.code}"))
             user_specs.append((ROLE_APPROVER, site, f"Department Head {site.code}"))
             user_specs.append((ROLE_STAFF, site, f"Staff Member {site.code}"))
+            user_specs.append((ROLE_OPS, site, f"Operations Manager {site.code}"))
+            user_specs.append((ROLE_PASSENGER, site, f"Passenger {site.code}"))
 
         role_map = {r.name: r for r in roles}
         slug = {
@@ -278,6 +306,8 @@ def seed_all() -> None:
             ROLE_FINANCE: "finance",
             ROLE_APPROVER: "depthead",
             ROLE_STAFF: "staff",
+            ROLE_OPS: "ops",
+            ROLE_PASSENGER: "passenger",
         }
         users = []
         for role_name, site, label in user_specs:
@@ -308,8 +338,247 @@ def seed_all() -> None:
         db.add_all(users)
         db.flush()
 
+        # ---------- Phase 2: Operational Intelligence ----------
+        airlines = ["ZamLink Air", "KuAir", "SouthLakes", "Tropic Sky", "CargoWest"]
+        route_pairs = [("LVI", "JNB"), ("JNB", "LVI"), ("LVI", "LUN"), ("LUN", "LVI"), ("LVI", "NBO"), ("NBO", "LVI"), ("LVI", "HRE"), ("HRE", "LVI")]
+
+        flights_by_site: dict[int, list[Flight]] = {}
+        baggage_by_site: dict[int, list[Baggage]] = {}
+        passengers_by_site: dict[int, list[Passenger]] = {}
+        for site in sites:
+            flights = []
+            for i in range(36):
+                origin, destination = rng.choice(route_pairs)
+                dep = datetime.now() + timedelta(hours=rng.randint(-20, 18))
+                status = rng.choices(
+                    ["Scheduled", "Boarding", "Departed", "Arrived", "Delayed", "Cancelled"],
+                    weights=[4, 2, 3, 3, 2, 1],
+                )[0]
+                flights.append(
+                    Flight(
+                        site_id=site.id,
+                        flight_number=f"{site.code}{100 + i}",
+                        airline=rng.choice(airlines),
+                        origin=origin,
+                        destination=destination,
+                        scheduled_departure=dep,
+                        scheduled_arrival=dep + timedelta(hours=rng.randint(1, 4)),
+                        actual_departure=dep + timedelta(minutes=10) if status in ("Departed", "Arrived") else None,
+                        actual_arrival=dep + timedelta(hours=rng.randint(1, 4)) if status == "Arrived" else None,
+                        status=status,
+                        gate=f"A{rng.randint(1, 12)}" if rng.random() > 0.2 else None,
+                        terminal=f"T{rng.randint(1, 2)}",
+                        passenger_capacity=180,
+                        passengers_booked=rng.randint(60, 178),
+                    )
+                )
+            db.add_all(flights)
+            db.flush()
+            flights_by_site[site.id] = flights
+
+            passengers = []
+            bags = []
+            pn = 1
+            for flight in flights[:26]:
+                for _ in range(rng.randint(8, 22)):
+                    passengers.append(
+                        Passenger(
+                            site_id=site.id,
+                            flight_id=flight.id,
+                            passenger_reference=f"PASS-{site.code}-{pn:04d}",
+                            status=rng.choices(["Checked In", "Boarded", "In Transit"], weights=[5, 3, 2])[0],
+                        )
+                    )
+                    pn += 1
+            db.add_all(passengers)
+            db.flush()
+            passengers_by_site[site.id] = passengers
+
+            bn = 1
+            scan_events = ["Drop-off", "Checked", "Screening", "Sorting", "Loaded", "Transferred", "Arrived", "Delivered"]
+            for passenger in passengers[:120]:
+                flight = next((f for f in flights if f.id == passenger.flight_id), None)
+                if not flight:
+                    continue
+                bag_status = rng.choices(["Processing", "In Transit", "Loaded", "Arrived", "Delivered", "Missing", "Delayed"], weights=[4, 3, 3, 3, 3, 1, 1])[0]
+                bag = Baggage(
+                    site_id=site.id,
+                    flight_id=flight.id,
+                    bag_id=f"{site.code}-BAG-{bn:05d}",
+                    passenger_reference=passenger.passenger_reference,
+                    origin=flight.origin,
+                    destination=flight.destination,
+                    status=bag_status,
+                    current_location=rng.choice(["Check-in", "Screening", "Sorting Hall", "Aircraft", "Carousel 1", "Carousel 2"]),
+                    expected_location="Carousel 1",
+                    exception_type=("Missing scan" if bag_status == "Missing" else "Short transfer" if bag_status == "Delayed" else None),
+                    transfer_time_minutes=round(rng.uniform(15, 80), 1) if rng.random() > 0.5 else None,
+                    risk_score=round(rng.uniform(0.0, 0.9), 2),
+                )
+                bags.append(bag)
+                db.add(bag)
+                db.flush()
+                for i, ev in enumerate(scan_events[: rng.randint(3, 6)]):
+                    db.add(
+                        BaggageScan(
+                            baggage_id=bag.id,
+                            scan_event=ev,
+                            location=bag.current_location if i == 0 else f"Station {i}",
+                            scanned_at=datetime.now() - timedelta(minutes=rng.randint(0, 180)),
+                        )
+                    )
+                bn += 1
+            baggage_by_site[site.id] = bags
+
+            for qtype, loc in [("security", "Security Checkpoint 1"), ("checkin", "Check-in Hall"), ("immigration", "Immigration Hall")]:
+                for _ in range(14):
+                    db.add(
+                        QueueSample(
+                            site_id=site.id,
+                            queue_type=qtype,
+                            location=loc,
+                            current_length=rng.randint(3, 45),
+                            avg_wait_minutes=round(rng.uniform(4, 38), 1),
+                            open_counters=rng.randint(1, 6),
+                            processing_rate=round(rng.uniform(0.5, 2.5), 2),
+                            recorded_at=datetime.now() - timedelta(minutes=rng.randint(0, 420)),
+                        )
+                    )
+            db.flush()
+
+            inc_no = 1
+            for severity in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "HIGH"]:
+                reported = datetime.now() - timedelta(hours=rng.randint(1, 30))
+                db.add(
+                    Incident(
+                        site_id=site.id,
+                        incident_number=f"INC-{site.code}-{inc_no:04d}",
+                        category=rng.choice(["security", "medical", "fire", "equipment", "passenger issue", "operational disruption"]),
+                        severity=severity,
+                        status="Reported",
+                        title=f"{severity.title()} {rng.choice(['baggage belt outage', 'escalator fault', 'medical response', 'security breach drill', 'boarding gate delay', 'runway debris'])}",
+                        description="Simulated incident for operational intelligence demonstration.",
+                        location=f"Terminal {rng.randint(1, 2)}, {rng.choice(['departures', 'arrivals', 'airside'])}",
+                        reported_by="ops.ku@airport360.com",
+                        source="Staff",
+                        reported_at=reported,
+                        resolved_at=reported + timedelta(hours=1) if rng.random() > 0.4 else None,
+                    )
+                )
+                inc_no += 1
+            db.flush()
+
+            mtn_no = 1
+            for cat, loc in [("toilet", "Toilet Block A"), ("escalator", "Escalator B"), ("lighting", "Car Park Lighting")]:
+                for _ in range(rng.randint(2, 3)):
+                    db.add(
+                        MaintenanceRequest(
+                            site_id=site.id,
+                            request_number=f"MTN-{site.code}-{mtn_no:04d}",
+                            category=cat,
+                            priority=rng.choices(["High", "Medium", "Low"], weights=[3, 5, 2])[0],
+                            status=rng.choices(["Reported", "In Progress", "Resolved"], weights=[3, 2, 4])[0],
+                            location=loc,
+                            description=f"Simulated maintenance issue at {loc}.",
+                            technician="J. Mwanza",
+                            reported_by="ops.ku@airport360.com",
+                            source="Staff",
+                            cost=round(rng.uniform(50, 1200), 2),
+                            reported_at=datetime.now() - timedelta(days=rng.randint(0, 20)),
+                            resolved_at=datetime.now() - timedelta(days=rng.randint(0, 15)),
+                            repeat_key=f"{cat.lower()}|{loc.lower()}",
+                        )
+                    )
+                    mtn_no += 1
+            db.flush()
+
+            for i in range(10):
+                db.add(
+                    CargoShipment(
+                        site_id=site.id,
+                        awb_number=f"AWB-{site.code}-{1000 + i}",
+                        status=rng.choices(["Registered", "In Warehouse", "Cleared", "Released"], weights=[3, 3, 2, 2])[0],
+                        origin=rng.choice(["LVI", "JNB", "NBO", "HRE"]),
+                        destination=rng.choice(["LVI", "JNB", "NBO", "HRE"]),
+                        weight_kg=round(rng.uniform(50, 900), 2),
+                        volume_m3=round(rng.uniform(0.2, 4.5), 2),
+                        storage_location=f"Bay {rng.randint(1, 8)}",
+                        delayed=rng.random() > 0.7,
+                        registered_at=datetime.now() - timedelta(days=rng.randint(0, 10)),
+                    )
+                )
+            db.flush()
+
+            for name in ["Terminal 1", "Terminal 2", "Control Tower", "Main Runway", "Cargo Warehouse"]:
+                db.add(
+                    Facility(
+                        site_id=site.id,
+                        name=name,
+                        facility_type=rng.choice(["terminal", "airfield", "operations", "cargo"]),
+                        location=f"{site.name} complex",
+                        status="Operational",
+                    )
+                )
+            db.flush()
+
+            db.add(
+                Alert(
+                    site_id=site.id,
+                    severity="HIGH",
+                    alert_type="congestion",
+                    title="Check-in congestion predicted",
+                    detail="Prototype queue model forecast HIGH congestion at Check-in Hall within 30 minutes.",
+                    status="Active",
+                    trigger_key="congestion|Check-in congestion predicted",
+                )
+            )
+
+            cmp_no = 1
+            for i in range(4):
+                db.add(
+                    Complaint(
+                        site_id=site.id,
+                        complaint_number=f"CMP-{site.code}-{cmp_no:04d}",
+                        passenger_reference=f"PASS-{site.code}-{100 + i:04d}",
+                        category=rng.choice(["baggage", "delay", "staff", "facilities", "cleanliness"]),
+                        status=rng.choices(["Submitted", "Under Review", "Resolved"], weights=[3, 2, 3])[0],
+                        title=f"{rng.choice(['Delayed baggage', 'Unclean facilities', 'Long queue', 'Staff assistance'])} at {site.code}",
+                        description="Simulated passenger complaint for complaint-to-incident flow.",
+                        submitted_at=datetime.now() - timedelta(days=rng.randint(0, 9)),
+                    )
+                )
+                cmp_no += 1
+            db.flush()
+
+        # ---------- Phase 4: Booking Marketplace ----------
+        partners = [
+            TravelAgencyPartner(name="Zambia Travel Hub", website="https://zambiatravelhub.example.com", certified=True, security_endorsed=True, commission_rate=3.5, active=True),
+            TravelAgencyPartner(name="Victoria Falls Tours", website="https://vicfallstours.example.com", certified=True, security_endorsed=False, commission_rate=2.8, active=True),
+            TravelAgencyPartner(name="Southern Skies Travel", website="https://southernskies.example.com", certified=False, security_endorsed=True, commission_rate=4.0, active=True),
+            TravelAgencyPartner(name="Kafue Safari Agency", website="https://kafuesafari.example.com", certified=True, security_endorsed=True, commission_rate=3.0, active=True),
+        ]
+        db.add_all(partners)
+        db.flush()
+
+        for site in sites:
+            for i in range(6):
+                partner = rng.choice(partners)
+                db.add(
+                    BookingReferral(
+                        site_id=site.id,
+                        passenger_reference=f"PASS-{site.code}-{100 + i:04d}",
+                        partner_id=partner.id,
+                        airline=rng.choice(airlines),
+                        flight_search={"origin": rng.choice(["LVI", "LUN"]), "destination": rng.choice(["JNB", "NBO", "HRE"])},
+                        redirect_url=partner.website,
+                        commission_estimate=partner.commission_rate,
+                        clicked_at=datetime.now() - timedelta(days=rng.randint(0, 14)),
+                    )
+                )
+        db.flush()
+
         db.commit()
-        print(f"Seeded {len(sites)} sites, {len(db.scalars(select(Employee)).all())} employees, {len(expenses)} expenses, {len(reqs)} requisitions.")
+        print(f"Seeded {len(sites)} sites, {len(db.scalars(select(Employee)).all())} employees, {len(expenses)} expenses, {len(reqs)} requisitions, {len(flights_by_site[sites[0].id])} flights/site, {len(baggage_by_site[sites[0].id])} bags/site.")
     finally:
         db.close()
 

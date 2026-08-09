@@ -89,5 +89,20 @@ def ku_staff_headers(auth_headers):
 
 
 @pytest.fixture()
+def ku_ops_headers(auth_headers):
+    return auth_headers("ops.ku@airport360.com")
+
+
+@pytest.fixture()
+def nm_ops_headers(auth_headers):
+    return auth_headers("ops.nm@airport360.com")
+
+
+@pytest.fixture()
+def ku_passenger_headers(auth_headers):
+    return auth_headers("passenger.ku@airport360.com")
+
+
+@pytest.fixture()
 def nm_hr_headers(auth_headers):
     return auth_headers("hr.nm@airport360.com")

@@ -1,9 +1,23 @@
 import { ReactNode } from "react";
 
+const OPS = ["Administrator", "Executive", "Operations Manager"];
+
 export type NavItem = { to: string; label: string; roles: string[] };
 
 export const NAV: NavItem[] = [
   { to: "/", label: "Dashboard", roles: ["Administrator", "Executive", "Finance Officer", "HR Officer", "Department Head"] },
+  { to: "/ops", label: "Command Center", roles: OPS },
+  { to: "/flights", label: "Flights", roles: [...OPS, "Staff"] },
+  { to: "/queues", label: "Queues & Predictions", roles: OPS },
+  { to: "/baggage", label: "Baggage", roles: OPS },
+  { to: "/incidents", label: "Incidents", roles: OPS },
+  { to: "/maintenance", label: "Maintenance", roles: [...OPS, "Staff"] },
+  { to: "/cargo", label: "Cargo", roles: [...OPS, "Staff"] },
+  { to: "/alerts", label: "Alerts", roles: OPS },
+  { to: "/assistant", label: "AI Assistant", roles: OPS },
+  { to: "/complaints", label: "Complaints", roles: OPS },
+  { to: "/bookings", label: "Booking Marketplace", roles: [...OPS, "Passenger"] },
+  { to: "/passenger", label: "Passenger Portal", roles: ["Passenger"] },
   { to: "/hr", label: "Human Resources", roles: ["Administrator", "Executive", "HR Officer", "Department Head"] },
   { to: "/procurement", label: "Procurement", roles: ["Administrator", "Executive", "Finance Officer", "HR Officer", "Department Head", "Staff"] },
   { to: "/finance", label: "Finance", roles: ["Administrator", "Executive", "Finance Officer"] },
@@ -71,4 +85,9 @@ export function ErrorMessage({ message }: { message: string | null }) {
 
 export function Loading() {
   return <div className="text-sm text-slate-400 py-8 text-center">Loading…</div>;
+}
+
+/** Mobile-first table wrapper: horizontal scroll on small screens, never breaks layout. */
+export function ScrollTable({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <div className={`overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 ${className}`}>{children}</div>;
 }

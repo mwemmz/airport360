@@ -1,0 +1,3 @@
+# Extra dependencies for Turso deployment (Render + Turso).
+# Linux/macOS only — DO NOT install on Windows. See README "Deployment".
+sqlalchemy-libsql>=0.2

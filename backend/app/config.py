@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Any
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -11,6 +12,7 @@ class Settings(BaseSettings):
     debug: bool = False
 
     database_url: str = "sqlite:///./airport360.db"
+    turso_auth_token: str = ""
     secret_key: str = "dev-secret-key-change-in-production"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 480
@@ -20,6 +22,16 @@ class Settings(BaseSettings):
     # Bootstrapping credentials (seed only, never used in prod)
     seed_admin_email: str = "admin@airport360.local"
     seed_admin_password: str = "Admin123!"
+
+    @property
+    def engine_connect_args(self) -> dict[str, Any]:
+        """libSQL (Turso) uses the sqlalchemy-libsql driver with an auth token;
+        local SQLite needs check_same_thread disabled for the threaded server."""
+        if self.database_url.startswith("sqlite+libsql"):
+            return {"auth_token": self.turso_auth_token} if self.turso_auth_token else {}
+        if self.database_url.startswith("sqlite"):
+            return {"check_same_thread": False}
+        return {}
 
 
 @lru_cache

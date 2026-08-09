@@ -3,7 +3,32 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .config import get_settings
-from .routers import audit, auth, bi, capacity_building, finance, hr, procurement, sites, users
+from .routers import (
+    ai,
+    alerts,
+    audit,
+    auth,
+    baggage,
+    bi,
+    bookings,
+    capacity_building,
+    cargo,
+    complaints,
+    computer_vision,
+    finance,
+    flights,
+    hr,
+    incidents,
+    maintenance,
+    ops,
+    passenger,
+    predictions,
+    procurement,
+    queues,
+    sites,
+    travel_agencies,
+    users,
+)
 
 settings = get_settings()
 
@@ -11,10 +36,11 @@ app = FastAPI(
     title="Airport360",
     description=(
         "Airport360 — locally-built ERP platform for a multi-site airport authority "
-        "(Phase 1: HR, Procurement, Finance, Business Intelligence, Capacity Building). "
+        "(Phase 1: HR, Procurement, Finance, Business Intelligence, Capacity Building; "
+        "Phase 2: Operational Intelligence; Phase 3: Passenger App; Phase 4: Booking Marketplace). "
         "All data is simulated and anonymized."
     ),
-    version="1.0.0",
+    version="2.0.0",
     openapi_tags=[
         {"name": "auth", "description": "Authentication and current-user identity"},
         {"name": "users", "description": "User administration (Administrator only)"},
@@ -25,6 +51,21 @@ app = FastAPI(
         {"name": "bi", "description": "Cross-module business intelligence dashboards"},
         {"name": "capacity-building", "description": "Partnership capacity-building tracking"},
         {"name": "audit", "description": "Audit log of all write operations (Administrator only)"},
+        {"name": "ops", "description": "Command Center: operational KPIs, risk level, event timeline"},
+        {"name": "flights", "description": "Flight schedule and live status"},
+        {"name": "passenger", "description": "Passenger self-service: flight/baggage status, complaints"},
+        {"name": "baggage", "description": "Baggage tracking and risk scoring"},
+        {"name": "queues", "description": "Queue samples (recorded or CV-derived)"},
+        {"name": "predictions", "description": "Queue ML predictions + model run registry"},
+        {"name": "incidents", "description": "Incident reporting, escalation, resolution"},
+        {"name": "maintenance", "description": "Maintenance requests and repeat-failure detection"},
+        {"name": "cargo", "description": "Cargo shipment status"},
+        {"name": "alerts", "description": "Alert rules engine with deduplication"},
+        {"name": "ai", "description": "AI assistant: Fact/Prediction/Recommendation answers over platform data"},
+        {"name": "computer-vision", "description": "Privacy-preserving crowd/queue analytics (aggregates only)"},
+        {"name": "complaints", "description": "Complaints management (staff-facing)"},
+        {"name": "travel-agencies", "description": "Certified travel agency partner directory"},
+        {"name": "bookings", "description": "Booking marketplace referral logging and analytics"},
     ],
 )
 
@@ -36,7 +77,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for r in (auth, users, sites, hr, procurement, finance, bi, capacity_building, audit):
+for r in (
+    auth,
+    users,
+    sites,
+    hr,
+    procurement,
+    finance,
+    bi,
+    capacity_building,
+    audit,
+    ops,
+    flights,
+    passenger,
+    baggage,
+    queues,
+    predictions,
+    incidents,
+    maintenance,
+    cargo,
+    alerts,
+    ai,
+    computer_vision,
+    complaints,
+    travel_agencies,
+    bookings,
+):
     app.include_router(r.router, prefix=settings.api_v1_prefix)
 
 

@@ -1,0 +1,47 @@
+# Render Blueprint — Airport360 (backend + frontend), Turso as the database.
+#
+# Backend:    Render Web Service (Linux) — installs requirements.txt + requirements-turso.txt,
+#             migrates the Turso DB, seeds simulated demo data, runs Uvicorn.
+# Frontend:   Render Static Site — builds with VITE_API_URL pointing at the backend.
+#
+# After creating your Turso database, set these secrets/env vars on the backend service:
+#   DATABASE_URL     sqlite+libsql://<your-db>-<org>.turso.io?secure=true
+#   TURSO_AUTH_TOKEN  the Turso db token (never commit it)
+#   SECRET_KEY        a long random value
+services:
+  - type: web
+    name: airport360-api
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r requirements.txt -r requirements-turso.txt
+    startCommand: alembic upgrade head && python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+        comment: "Turso URL, e.g. sqlite+libsql://<db>-<org>.turso.io?secure=true"
+      - key: TURSO_AUTH_TOKEN
+        sync: false
+        comment: "Turso database auth token (secret)"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: '[https://airport360-frontend.onrender.com]'
+        comment: "Replace with the actual static-site URL shown in the Render dashboard"
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "480"
+
+  - type: web
+    name: airport360-frontend
+    runtime: static
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    routes:
+      - type: rewrite
+        source: /<.*>
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        value: https://airport360-api.onrender.com
+        comment: "Backend base URL (no /v1 suffix). Set at build time."
