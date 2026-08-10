@@ -4,6 +4,7 @@ from collections.abc import Generator
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.pool import NullPool
 
 load_dotenv()
 
@@ -29,10 +30,14 @@ def build_sqlalchemy_url(raw_url: str) -> str:
 
 if TURSO_DATABASE_URL:
     connect_args = {"auth_token": TURSO_AUTH_TOKEN} if TURSO_AUTH_TOKEN else {}
+    # NullPool: Turso closes idle Hrana streams server-side, and libsql-experimental
+    # PANICS (pyo3 Option::unwrap on None) when a pooled connection reuses a closed
+    # stream. A fresh connection per request sidesteps that entirely (pool_pre_ping
+    # does not help: the driver's ping runs against its local replica, not the remote).
     engine = create_engine(
         build_sqlalchemy_url(TURSO_DATABASE_URL),
         connect_args=connect_args,
-        pool_pre_ping=True,
+        poolclass=NullPool,
     )
 else:
     engine = create_engine(
