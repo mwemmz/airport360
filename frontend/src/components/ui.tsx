@@ -85,7 +85,7 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
 
 export function Card({ title, children, className = "", actions }: { title?: string; children: ReactNode; className?: string; actions?: ReactNode }) {
   return (
-    <div className={`bg-white rounded-2xl border border-slate-200/70 shadow-sm hover:shadow-md transition-shadow duration-300 p-5 md:p-6 ${className}`}>
+    <div className={`glass-card card-glow p-5 md:p-6 ${className}`}>
       {(title || actions) && (
         <div className="flex items-center justify-between mb-4">
           {title && (
@@ -118,20 +118,22 @@ export function Stat({
   hint,
   icon,
   tone = "indigo",
+  className = "",
 }: {
   label: string;
   value: string | number;
   hint?: string;
   icon?: ReactNode;
   tone?: StatTone;
+  className?: string;
 }) {
   const s = STAT_STYLES[tone];
   return (
-    <div className="relative overflow-hidden bg-white rounded-2xl border border-slate-200/70 shadow-sm hover:shadow-md transition-all duration-300 p-4 md:p-5 group">
-      <div className={`absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r ${s.ring} opacity-70`} />
+    <div className={`glass-card card-glow p-4 md:p-5 group ${className ?? ""}`}>
+      <div className={`absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r ${s.ring} opacity-70 rounded-t-2xl`} />
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{label}</div>
+          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</div>
           <div className="mt-1.5 text-xl md:text-2xl font-extrabold text-slate-900 tabular-nums">{value}</div>
           {hint && <div className="mt-1 text-[11px] text-slate-400 truncate">{hint}</div>}
         </div>
@@ -210,7 +212,7 @@ export function Loading({ label = "Loading…" }: { label?: string }) {
 
 export function SkeletonCard({ className = "" }: { className?: string }) {
   return (
-    <div className={`bg-white rounded-2xl border border-slate-200/70 shadow-sm p-5 ${className}`}>
+    <div className={`glass-card p-5 ${className}`}>
       <div className="skeleton h-3 w-24 mb-4" />
       <div className="skeleton h-8 w-full mb-2" />
       <div className="skeleton h-3 w-3/4" />

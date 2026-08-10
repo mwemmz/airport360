@@ -88,7 +88,7 @@ export default function Queues() {
           </form>
           <ErrorMessage message={error} />
           {prediction && (
-            <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4">
+            <div className="mt-4 rounded-xl border border-white/70 bg-white/60 backdrop-blur-xl p-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-semibold text-slate-700">Prediction</span>
                 <Badge tone={prediction.congestion_level === "HIGH" || prediction.congestion_level === "CRITICAL" ? "red" : prediction.congestion_level === "MEDIUM" ? "amber" : "green"}>

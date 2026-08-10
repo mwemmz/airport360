@@ -133,8 +133,14 @@ export default function Layout() {
           <div className="text-[11px] text-slate-400 font-medium">{user.role.name}</div>
         </header>
 
-        <main className="flex-1 p-4 md:p-8 max-w-[1400px] w-full mx-auto">
-          <div key={location.pathname} className="animate-fade-in-up">
+        <main className="flex-1 p-4 md:p-8 max-w-[1400px] w-full mx-auto relative">
+          {/* Decorative background blobs */}
+          <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden>
+            <div className="absolute -top-24 -left-24 w-96 h-96 rounded-full bg-indigo-400/25 blur-3xl animate-blob" />
+            <div className="absolute top-1/3 -right-32 w-[28rem] h-[28rem] rounded-full bg-cyan-400/20 blur-3xl animate-blob" style={{ animationDelay: "2.5s" }} />
+            <div className="absolute bottom-0 left-1/3 w-80 h-80 rounded-full bg-emerald-400/15 blur-3xl animate-blob" style={{ animationDelay: "5s" }} />
+          </div>
+          <div key={location.pathname} className="relative z-10 animate-fade-in-up">
             <Outlet />
           </div>
         </main>

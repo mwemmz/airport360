@@ -29,13 +29,13 @@ export default function Cargo() {
       <div className="mb-4 flex gap-2">
         <button
           onClick={() => setShowDelayed(false)}
-          className={`rounded-md px-3 py-1.5 text-sm ${!showDelayed ? "bg-brand-600 text-white" : "bg-white border border-slate-300 text-slate-600"}`}
+          className={`rounded-md px-3 py-1.5 text-sm ${!showDelayed ? "bg-brand-600 text-white" : "bg-white/70 backdrop-blur-xl border border-slate-200 text-slate-600"}`}
         >
           All
         </button>
         <button
           onClick={() => setShowDelayed(true)}
-          className={`rounded-md px-3 py-1.5 text-sm ${showDelayed ? "bg-brand-600 text-white" : "bg-white border border-slate-300 text-slate-600"}`}
+          className={`rounded-md px-3 py-1.5 text-sm ${showDelayed ? "bg-brand-600 text-white" : "bg-white/70 backdrop-blur-xl border border-slate-200 text-slate-600"}`}
         >
           Delayed only ({delayed.data?.length ?? "…"})
         </button>

@@ -40,13 +40,13 @@ export default function Baggage() {
       <div className="mb-4 flex flex-wrap gap-2">
         <button
           onClick={() => setShowHighRiskOnly(false)}
-          className={`rounded-md px-3 py-1.5 text-sm ${!showHighRiskOnly ? "bg-brand-600 text-white" : "bg-white border border-slate-300 text-slate-600"}`}
+          className={`rounded-md px-3 py-1.5 text-sm ${!showHighRiskOnly ? "bg-brand-600 text-white" : "bg-white/70 backdrop-blur-xl border border-slate-200 text-slate-600"}`}
         >
           All bags
         </button>
         <button
           onClick={() => setShowHighRiskOnly(true)}
-          className={`rounded-md px-3 py-1.5 text-sm ${showHighRiskOnly ? "bg-brand-600 text-white" : "bg-white border border-slate-300 text-slate-600"}`}
+          className={`rounded-md px-3 py-1.5 text-sm ${showHighRiskOnly ? "bg-brand-600 text-white" : "bg-white/70 backdrop-blur-xl border border-slate-200 text-slate-600"}`}
         >
           High risk ({highRisk.data?.length ?? "…"})
         </button>

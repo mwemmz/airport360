@@ -81,7 +81,7 @@ export default function Dashboard() {
         {loading ? (
           <>
             {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="bg-white rounded-2xl border border-slate-200/70 shadow-sm p-5">
+              <div key={i} className="glass-card p-5">
                 <div className="skeleton h-3 w-20 mb-3" />
                 <div className="skeleton h-8 w-16" />
               </div>
@@ -224,7 +224,7 @@ export default function Dashboard() {
               </thead>
               <tbody>
                 {(anomalies.data ?? []).map((a) => (
-                  <tr key={a.expense_number} className="border-b border-slate-100 hover:bg-slate-50/70 transition-colors">
+                  <tr key={a.expense_number} className="border-b border-slate-100 hover:bg-indigo-50/40 transition-colors">
                     <td className="py-3 pr-2 font-mono text-xs text-slate-500">{a.expense_number}</td>
                     <td className="py-3 px-2">{a.category}</td>
                     <td className="py-3 px-2 font-semibold tabular-nums">${a.amount.toFixed(2)}</td>
@@ -242,7 +242,7 @@ export default function Dashboard() {
       </Card>
 
       {!loading && overview.data && overview.data.pending_approvals > 0 && (
-        <div className="flex items-start gap-3 rounded-2xl border border-amber-200/70 bg-amber-50/70 p-4 animate-fade-in">
+        <div className="glass-card card-glow flex items-start gap-3 rounded-2xl border border-amber-200/70 bg-amber-50/50 p-4 animate-fade-in">
           <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
           <div className="text-sm text-amber-800">
             <span className="font-bold">{overview.data.pending_approvals}</span> requisition{overview.data.pending_approvals === 1 ? "" : "s"} awaiting approval.
