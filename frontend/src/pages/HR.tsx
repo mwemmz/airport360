@@ -25,7 +25,6 @@ type Training = {
   completed_date: string | null;
   certificate: boolean;
 };
-
 export default function HR() {
   const { user } = useAuth();
   const canEdit = user?.role.name === "Administrator" || user?.role.name === "HR Officer";
@@ -86,6 +85,17 @@ export default function HR() {
       setError((err as Error).message);
     }
   }
+
+  const empName = (id: number) => {
+    const e = employees.data?.find((x) => x.id === id);
+    return e ? `${e.first_name} ${e.last_name}` : `#${id}`;
+  };
+
+  const trained = (training.data ?? []).map((t) => ({ ...t, employee_name: empName(t.employee_id) })).sort((a, b) =>
+    a.employee_name.localeCompare(b.employee_name) || a.course_name.localeCompare(b.course_name)
+  );
+  const trainedIds = new Set((training.data ?? []).map((t) => t.employee_id));
+  const trainedCount = [...trainedIds].filter((id) => employees.data?.some((e) => e.id === id)).length;
 
   return (
     <div>
@@ -151,16 +161,46 @@ export default function HR() {
         <Card title="Training records">
           {training.loading ? (
             <Loading />
+          ) : trained.length === 0 ? (
+            <p className="text-sm text-slate-400">No training records for this site yet.</p>
           ) : (
-            <ul className="space-y-3 text-sm">
-              {(training.data ?? []).map((t) => (
-                <li key={t.id} className="border-b border-slate-100 pb-2">
-                  <div className="font-medium">{t.course_name}</div>
-                  <div className="text-xs text-slate-500">{t.provider} · {t.completed_date ?? "in progress"}</div>
-                  <div className="mt-1"><Badge tone={statusTone(t.status)}>{t.status}</Badge></div>
-                </li>
-              ))}
-            </ul>
+            <>
+              <div className="mb-3 grid grid-cols-2 gap-3">
+                <div className="rounded-xl bg-white/60 border border-slate-200 px-3 py-2">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Records</div>
+                  <div className="text-lg font-extrabold text-slate-900 tabular-nums">{trained.length}</div>
+                </div>
+                <div className="rounded-xl bg-white/60 border border-slate-200 px-3 py-2">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Employees trained</div>
+                  <div className="text-lg font-extrabold text-slate-900 tabular-nums">{trainedCount}</div>
+                </div>
+              </div>
+              <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
+                <table className="w-full min-w-[380px] text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-slate-500 border-b">
+                      <th className="py-2">Employee</th>
+                      <th>Course</th>
+                      <th>Provider</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {trained.map((t) => (
+                      <tr key={t.id} className="border-b border-slate-100">
+                        <td className="py-2 font-medium">{t.employee_name}</td>
+                        <td>
+                          {t.course_name}
+                          {t.certificate && <span className="ml-1.5 text-[10px] font-bold uppercase text-emerald-600">✓ certified</span>}
+                        </td>
+                        <td className="text-xs text-slate-500">{t.provider}</td>
+                        <td><Badge tone={statusTone(t.status)}>{t.status}</Badge></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </Card>
       </div>

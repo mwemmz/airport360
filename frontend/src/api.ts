@@ -1,4 +1,5 @@
 const TOKEN_KEY = "airport360_token";
+const SITE_KEY = "airport360_active_site";
 
 // VITE_API_URL points the built app at the deployed backend (e.g. Render).
 // In local dev it stays empty and the Vite proxy forwards /v1 to localhost:8000.
@@ -27,13 +28,33 @@ export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+export function getActiveSite(): number | null {
+  const v = localStorage.getItem(SITE_KEY);
+  return v ? Number(v) : null;
+}
+
+export function setActiveSite(siteId: number): void {
+  localStorage.setItem(SITE_KEY, String(siteId));
+}
+
+export function clearActiveSite(): void {
+  localStorage.removeItem(SITE_KEY);
+}
+
+function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const headers: Record<string, string> = { ...extra };
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const site = getActiveSite();
+  if (site) headers["X-Site-Id"] = String(site);
+  return headers;
+}
+
 /** Multipart upload (e.g. video analysis). Does NOT set Content-Type so the browser adds the boundary. */
 export async function apiUpload<T>(path: string, file: File): Promise<T> {
   const form = new FormData();
   form.append("file", file);
-  const headers: Record<string, string> = {};
-  const token = getToken();
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const headers = authHeaders();
 
   const resp = await fetch(`${API_BASE}/v1${path}`, { method: "POST", headers, body: form });
   if (resp.status === 401) {
@@ -60,12 +81,8 @@ export async function api<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...((options.headers as Record<string, string>) || {}),
-  };
-  const token = getToken();
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const headers = authHeaders(options.headers as Record<string, string> | undefined);
+  headers["Content-Type"] = "application/json";
 
   const resp = await fetch(`${API_BASE}/v1${path}`, { ...options, headers });
   if (resp.status === 401) {

@@ -23,7 +23,7 @@ class CurrentUser:
 
     @property
     def site_id(self) -> int:
-        return self.user.site_id
+        return self.site.id
 
 
 def _extract_token(authorization: str | None) -> str:
@@ -35,6 +35,7 @@ def _extract_token(authorization: str | None) -> str:
 def get_current_user(
     db: DbSession,
     authorization: Annotated[str | None, Header()] = None,
+    x_site_id: Annotated[int | None, Header(alias="X-Site-Id")] = None,
 ) -> CurrentUser:
     token = _extract_token(authorization)
     try:
@@ -50,6 +51,14 @@ def get_current_user(
     site = db.get(Site, user.site_id)
     if not site:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User site not found")
+
+    if x_site_id is not None and x_site_id != user.site_id:
+        if user.role.name not in (ROLE_ADMIN, ROLE_EXECUTIVE):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cross-site switching denied")
+        target = db.get(Site, x_site_id)
+        if not target or not target.active:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site not found")
+        site = target
 
     return CurrentUser(user=user, site=site)
 

@@ -7,7 +7,7 @@ from ..audit import log_action
 from ..deps import CurrentUser, DbSession, require_roles
 from ..models.core import Site
 from ..schemas import SiteCreate, SiteOut
-from ..security import ROLE_ADMIN
+from ..security import ROLE_ADMIN, ROLE_EXECUTIVE
 
 router = APIRouter(prefix="/sites", tags=["sites"])
 
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/sites", tags=["sites"])
 @router.get("", response_model=list[SiteOut])
 def list_sites(
     db: DbSession = None,
-    current: Annotated[CurrentUser, Depends(require_roles(ROLE_ADMIN))] = None,
+    current: Annotated[CurrentUser, Depends(require_roles(ROLE_ADMIN, ROLE_EXECUTIVE))] = None,
 ):
     return db.scalars(select(Site).order_by(Site.id)).all()
 

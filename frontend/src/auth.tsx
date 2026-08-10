@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { api, clearToken, getToken, setToken, User } from "./api";
+import { api, clearActiveSite, clearToken, getToken, setToken, User } from "./api";
 
 type AuthContextValue = {
   user: User | null;
@@ -38,6 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   function logout() {
     clearToken();
+    clearActiveSite();
     setUser(null);
   }
 

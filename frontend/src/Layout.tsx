@@ -1,13 +1,17 @@
 import { useEffect, useState } from "react";
 import { Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "./auth";
+import { api, getActiveSite, setActiveSite } from "./api";
 import { NAV, navIcon } from "./components/ui";
 import { LogOut, Plane, Menu, X } from "lucide-react";
+
+type SiteRow = { id: number; code: string; name: string; city: string; country: string; active: boolean };
 
 export default function Layout() {
   const { user, logout } = useAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showBar, setShowBar] = useState(false);
+  const [sites, setSites] = useState<SiteRow[]>([]);
   const location = useLocation();
 
   useEffect(() => {
@@ -17,7 +21,25 @@ export default function Layout() {
     return () => clearTimeout(t);
   }, [location.pathname]);
 
+  useEffect(() => {
+    if (!user) return;
+    const canSwitch = user.role.name === "Administrator" || user.role.name === "Executive";
+    if (!canSwitch) return;
+    api<SiteRow[]>("/sites")
+      .then(setSites)
+      .catch(() => setSites([]));
+  }, [user]);
+
   if (!user) return <Navigate to="/login" replace />;
+
+  const canSwitch = user.role.name === "Administrator" || user.role.name === "Executive";
+  const activeSiteId = getActiveSite() ?? user.site_id;
+  const activeSite = sites.find((s) => s.id === activeSiteId) ?? sites.find((s) => s.id === user.site_id);
+
+  function switchSite(siteId: number) {
+    setActiveSite(siteId);
+    window.location.reload();
+  }
 
   const items = NAV.filter((n) => n.roles.includes(user.role.name));
 
@@ -61,7 +83,29 @@ export default function Layout() {
       </div>
       <div className="relative mt-4 inline-flex items-center gap-1.5 rounded-full bg-white/5 border border-white/10 px-2.5 py-1 text-[11px] text-slate-300">
         <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-        Site {user.site_id} · {user.role.name}
+        {canSwitch ? (
+          <select
+            value={activeSiteId}
+            onChange={(e) => switchSite(Number(e.target.value))}
+            className="bg-transparent text-slate-200 text-[11px] font-semibold outline-none cursor-pointer max-w-[140px]"
+            title="Switch site"
+          >
+            <option value={user.site_id} className="bg-slate-900 text-slate-200">
+              {activeSite ? `${activeSite.code} — ${activeSite.name}` : `Site ${user.site_id}`}
+            </option>
+            {sites
+              .filter((s) => s.id !== user.site_id && s.active)
+              .map((s) => (
+                <option key={s.id} value={s.id} className="bg-slate-900 text-slate-200">
+                  {s.code} — {s.name}
+                </option>
+              ))}
+          </select>
+        ) : (
+          <span>{activeSite ? `${activeSite.code} — ${activeSite.name}` : `Site ${user.site_id}`}</span>
+        )}
+        <span className="text-slate-500">·</span>
+        <span>{user.role.name}</span>
       </div>
     </div>
   );

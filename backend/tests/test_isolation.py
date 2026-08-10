@@ -43,3 +43,25 @@ def test_executive_can_read_cross_site_bi(client, exec_headers):
     resp = client.get("/v1/bi/spend-by-site", headers=exec_headers)
     assert resp.status_code == 200
     assert len(resp.json()) >= 2
+
+
+def test_admin_can_switch_site_via_x_site_id(client, admin_headers):
+    resp = client.get("/v1/hr/employees", headers={**admin_headers, "X-Site-Id": "2"})
+    assert resp.status_code == 200
+    assert all(e["site_id"] == 2 for e in resp.json())
+
+
+def test_executive_can_switch_site_via_x_site_id(client, exec_headers):
+    resp = client.get("/v1/hr/employees", headers={**exec_headers, "X-Site-Id": "2"})
+    assert resp.status_code == 200
+    assert all(e["site_id"] == 2 for e in resp.json())
+
+
+def test_hr_cannot_switch_site_via_x_site_id(client, ku_hr_headers):
+    resp = client.get("/v1/hr/employees", headers={**ku_hr_headers, "X-Site-Id": "2"})
+    assert resp.status_code == 403
+
+
+def test_admin_switch_unknown_site_returns_404(client, admin_headers):
+    resp = client.get("/v1/hr/employees", headers={**admin_headers, "X-Site-Id": "999"})
+    assert resp.status_code == 404
