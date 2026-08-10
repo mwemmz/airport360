@@ -1,6 +1,7 @@
 from functools import lru_cache
 from typing import Any
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,6 +23,16 @@ class Settings(BaseSettings):
     # Bootstrapping credentials (seed only, never used in prod)
     seed_admin_email: str = "admin@airport360.local"
     seed_admin_password: str = "Admin123!"
+
+    @field_validator("database_url")
+    @classmethod
+    def normalize_database_url(cls, v: str) -> str:
+        """Turso's dashboard shows `libsql://host`; the sqlalchemy-libsql dialect
+        registers as `sqlite.libsql`, so the URL must use the `sqlite+libsql` scheme."""
+        if v.startswith("libsql://") and not v.startswith("sqlite+libsql://"):
+            base = v.replace("libsql://", "sqlite+libsql://", 1)
+            return base if "?" in base else f"{base}?secure=true"
+        return v
 
     @property
     def engine_connect_args(self) -> dict[str, Any]:
