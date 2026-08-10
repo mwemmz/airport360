@@ -31,8 +31,8 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: CORS_ORIGINS
-        value: '[https://airport360-frontend.onrender.com]'
-        comment: "Replace with the actual static-site URL shown in the Render dashboard"
+        value: '["https://airport360-frontend.onrender.com"]'
+        comment: "JSON array of allowed origins — must be valid JSON (quoted URLs)"
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: "480"
 
