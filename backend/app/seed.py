@@ -85,9 +85,19 @@ def seed_all() -> None:
     Base.metadata.create_all(bind=engine)
     db: Session = SessionLocal()
     try:
-        if db.scalar(select(Site).limit(1)):
+        if db.scalar(select(TravelAgencyPartner).limit(1)):
             print("Database already seeded; skipping.")
             return
+
+        # A crashed previous run may have committed only part of the seed (Turso
+        # drops long-lived HTTP streams, so the seed commits in small batches).
+        # Reset cleanly so a re-run always produces a complete dataset.
+        if db.scalar(select(Site).limit(1)):
+            print("Partial seed detected; resetting database before reseeding...")
+            db.close()
+            Base.metadata.drop_all(bind=engine)
+            Base.metadata.create_all(bind=engine)
+            db = SessionLocal()
 
         sites = [
             Site(code="KU", name="Kuomboka International Airport", city="Livingstone", country="Zambia", iata_code="LVI"),
@@ -118,6 +128,7 @@ def seed_all() -> None:
             db.add_all(vendors)
             vendors_by_site[site.id] = vendors
         db.flush()
+        db.commit()
 
         departments_by_site: dict[int, list[Department]] = {}
         employees_by_site: dict[int, list[Employee]] = {}
@@ -148,6 +159,7 @@ def seed_all() -> None:
                     employees.append(emp)
             db.add_all(employees)
             db.flush()
+            db.commit()
             employees_by_site[site.id] = employees
 
         budget_lines = []
@@ -165,6 +177,7 @@ def seed_all() -> None:
                     budget_lines.append(line)
         db.add_all(budget_lines)
         db.flush()
+        db.commit()
         lines_by_site: dict[int, list[BudgetLine]] = {s.id: [l for l in budget_lines if l.site_id == s.id] for s in sites}
 
         # Expenses: 8 weeks of history so BI trends/anomalies have real data
@@ -221,6 +234,7 @@ def seed_all() -> None:
                 reqs.append(req)
         db.add_all(reqs)
         db.flush()
+        db.commit()
 
         # Purchase orders for approved requisitions
         pos = []
@@ -284,6 +298,7 @@ def seed_all() -> None:
                     )
         db.add_all(activities)
         db.flush()
+        db.commit()
 
         # Users: one per role at each site + shared admin/executive
         user_specs = [
@@ -337,6 +352,7 @@ def seed_all() -> None:
                 )
         db.add_all(users)
         db.flush()
+        db.commit()
 
         # ---------- Phase 2: Operational Intelligence ----------
         airlines = ["ZamLink Air", "KuAir", "SouthLakes", "Tropic Sky", "CargoWest"]
@@ -392,6 +408,7 @@ def seed_all() -> None:
                     pn += 1
             db.add_all(passengers)
             db.flush()
+            db.commit()
             passengers_by_site[site.id] = passengers
 
             bn = 1
@@ -445,6 +462,7 @@ def seed_all() -> None:
                         )
                     )
             db.flush()
+            db.commit()
 
             inc_no = 1
             for severity in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "HIGH"]:
@@ -467,6 +485,7 @@ def seed_all() -> None:
                 )
                 inc_no += 1
             db.flush()
+            db.commit()
 
             mtn_no = 1
             for cat, loc in [("toilet", "Toilet Block A"), ("escalator", "Escalator B"), ("lighting", "Car Park Lighting")]:
@@ -491,6 +510,7 @@ def seed_all() -> None:
                     )
                     mtn_no += 1
             db.flush()
+            db.commit()
 
             for i in range(10):
                 db.add(
@@ -508,6 +528,7 @@ def seed_all() -> None:
                     )
                 )
             db.flush()
+            db.commit()
 
             for name in ["Terminal 1", "Terminal 2", "Control Tower", "Main Runway", "Cargo Warehouse"]:
                 db.add(
@@ -518,8 +539,9 @@ def seed_all() -> None:
                         location=f"{site.name} complex",
                         status="Operational",
                     )
-                )
+                    )
             db.flush()
+            db.commit()
 
             db.add(
                 Alert(
@@ -549,6 +571,7 @@ def seed_all() -> None:
                 )
                 cmp_no += 1
             db.flush()
+            db.commit()
 
         # ---------- Phase 4: Booking Marketplace ----------
         partners = [

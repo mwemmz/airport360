@@ -1,5 +1,6 @@
 import logging
 import threading
+import time
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -146,7 +147,13 @@ def startup():
 
 
 def _seed_in_background():
-    try:
-        seed_all()
-    except Exception:
-        logger.exception("background seed failed (app is up; database may be empty or partial)")
+    # Turso's HTTP streams drop long-lived transactions, so a single attempt can
+    # fail partway. seed_all() commits in small batches and resets any partial
+    # data on the next attempt, so retrying converges to a complete dataset.
+    for attempt in range(1, 4):
+        try:
+            seed_all()
+            return
+        except Exception:
+            logger.exception("background seed attempt %s of 3 failed (app stays up)", attempt)
+            time.sleep(10 * attempt)

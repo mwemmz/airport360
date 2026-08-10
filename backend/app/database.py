@@ -40,7 +40,14 @@ else:
         connect_args={"check_same_thread": False},
     )
 
-SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+SessionLocal = sessionmaker(
+    bind=engine,
+    autocommit=False,
+    autoflush=False,
+    # Keeps ORM instances usable across the seed's frequent commits (avoids
+    # hundreds of pointless re-selects against the remote Turso database).
+    expire_on_commit=False,
+)
 
 
 class Base(DeclarativeBase):
