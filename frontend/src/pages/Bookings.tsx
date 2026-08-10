@@ -1,9 +1,10 @@
 import { FormEvent, useState } from "react";
 import { api } from "../api";
+import { useAuth } from "../auth";
 import { Badge, Card, ErrorMessage, Loading, PageHeader, ScrollTable, Stat } from "../components/ui";
 import { useApi } from "../useApi";
 
-type Partner = { id: number; name: string; website: string; certified: boolean; security_endorsed: boolean };
+type Partner = { id: number; name: string; website: string; certified: boolean; security_endorsed: boolean; commission_rate: number };
 type Analytics = {
   total_referrals: number;
   estimated_commission: number;
@@ -12,13 +13,35 @@ type Analytics = {
 };
 
 export default function Bookings() {
-  const partners = useApi<Partner[]>("/bookings/partners");
+  const { user } = useAuth();
+  const canManage = user?.role.name === "Administrator" || user?.role.name === "Executive";
+
+  const partners = useApi<Partner[]>("/travel-agencies");
   const analytics = useApi<Analytics>("/bookings/analytics");
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function addPartner(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setMessage(null);
+    const data = new FormData(e.target as HTMLFormElement);
+    const params = new URLSearchParams();
+    data.forEach((v, k) => params.append(k, String(v)));
+    try {
+      await api(`/travel-agencies?${params.toString()}`, { method: "POST" });
+      setMessage("Agency added.");
+      (e.target as HTMLFormElement).reset();
+      partners.refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
 
   async function refer(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    setMessage(null);
     const data = new FormData(e.target as HTMLFormElement);
     const params = new URLSearchParams();
     data.forEach((v, k) => params.append(k, String(v)));
@@ -36,6 +59,8 @@ export default function Bookings() {
         title="Booking Marketplace"
         subtitle="Referral logging to certified travel agencies — no PNR or payment data stored, booking happens on the airline's own checkout."
       />
+
+      {message && <div className="rounded-md bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-700 mb-4">{message}</div>}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         <Card title="Log a referral">
@@ -58,7 +83,26 @@ export default function Bookings() {
           <ErrorMessage message={error} />
         </Card>
 
-        <Card title="Referral analytics" className="lg:col-span-2">
+        {canManage && (
+          <Card title="Add agency partner">
+            <form onSubmit={addPartner} className="space-y-3">
+              <input name="name" required placeholder="Agency name" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <input name="website" required placeholder="https://agency.example.com" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <input name="commission_rate" type="number" step="0.01" min="0" placeholder="Commission rate (%)" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <div className="flex items-center gap-4">
+                <label className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
+                  <input name="certified" type="checkbox" className="rounded" /> Certified
+                </label>
+                <label className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
+                  <input name="security_endorsed" type="checkbox" className="rounded" /> Security endorsed
+                </label>
+              </div>
+              <button className="w-full rounded-md bg-brand-600 text-white px-4 py-2 text-sm hover:bg-brand-700">Add agency</button>
+            </form>
+          </Card>
+        )}
+
+        <Card title="Referral analytics" className={canManage ? "" : "lg:col-span-2"}>
           {analytics.loading ? (
             <Loading />
           ) : analytics.error ? (
@@ -92,7 +136,6 @@ export default function Bookings() {
           )}
         </Card>
       </div>
-
       <Card title="Certified agency partners">
         {partners.loading ? (
           <Loading />
@@ -105,6 +148,7 @@ export default function Bookings() {
                 <tr className="text-left text-xs text-slate-500 border-b">
                   <th className="py-2">Agency</th>
                   <th>Website</th>
+                  <th>Commission</th>
                   <th>Certified</th>
                   <th>Security endorsed</th>
                 </tr>
@@ -118,6 +162,7 @@ export default function Bookings() {
                         {p.website}
                       </a>
                     </td>
+                    <td className="text-xs tabular-nums">{(p.commission_rate ?? 0).toFixed(1)}%</td>
                     <td>
                       <Badge tone={p.certified ? "green" : "slate"}>{p.certified ? "Yes" : "No"}</Badge>
                     </td>

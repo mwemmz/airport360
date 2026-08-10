@@ -6,6 +6,7 @@ import {
   BookOpen,
   Briefcase,
   Building2,
+  Cctv,
   ClipboardList,
   Cloud,
   HeartHandshake,
@@ -31,6 +32,7 @@ export const NAV: NavItem[] = [
   { to: "/ops", label: "Command Center", roles: OPS },
   { to: "/flights", label: "Flights", roles: [...OPS, "Staff"] },
   { to: "/queues", label: "Queues & Predictions", roles: OPS },
+  { to: "/vision", label: "Computer Vision", roles: OPS },
   { to: "/baggage", label: "Baggage", roles: OPS },
   { to: "/incidents", label: "Incidents", roles: OPS },
   { to: "/maintenance", label: "Maintenance", roles: [...OPS, "Staff"] },
@@ -53,6 +55,7 @@ export function navIcon(to: string) {
     case "/ops": return Radar;
     case "/flights": return Plane;
     case "/queues": return ClipboardList;
+    case "/vision": return Cctv;
     case "/baggage": return Luggage;
     case "/incidents": return AlertTriangle;
     case "/maintenance": return Wrench;

@@ -6,6 +6,7 @@ import Dashboard from "./pages/Dashboard";
 import CommandCenter from "./pages/CommandCenter";
 import Flights from "./pages/Flights";
 import Queues from "./pages/Queues";
+import ComputerVision from "./pages/ComputerVision";
 import Baggage from "./pages/Baggage";
 import Incidents from "./pages/Incidents";
 import Maintenance from "./pages/Maintenance";
@@ -68,6 +69,14 @@ export default function App() {
               element={
                 <RequireRole roles={OPS}>
                   <Queues />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/vision"
+              element={
+                <RequireRole roles={OPS}>
+                  <ComputerVision />
                 </RequireRole>
               }
             />

@@ -61,6 +61,18 @@ export default function Admin() {
     }
   }
 
+  async function toggleUser(u: UserRow) {
+    setError(null);
+    setMessage(null);
+    try {
+      await api(`/users/${u.id}/status?active=${!u.active}`, { method: "PATCH" });
+      setMessage(`User "${u.email}" ${u.active ? "deactivated" : "reactivated"}.`);
+      users.refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
   return (
     <div>
       <PageHeader title="Administration" subtitle="Users, roles, sites, and audit log." />
@@ -72,26 +84,41 @@ export default function Admin() {
           {users.loading ? (
             <Loading />
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-slate-500 border-b">
-                  <th className="py-2">Name</th>
-                  <th>Email</th>
-                  <th>Role</th>
-                  <th>Site</th>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-slate-500 border-b">
+                <th className="py-2">Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Site</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(users.data ?? []).map((u) => (
+                <tr key={u.id} className="border-b border-slate-100">
+                  <td className="py-2">{u.full_name}</td>
+                  <td className="text-xs">{u.email}</td>
+                  <td>{u.role.name}</td>
+                  <td>{u.site_id}</td>
+                  <td>
+                    <button
+                      onClick={() => toggleUser(u)}
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset transition-colors ${
+                        u.active
+                          ? "bg-emerald-50 text-emerald-700 ring-emerald-200 hover:bg-emerald-100"
+                          : "bg-rose-50 text-rose-700 ring-rose-200 hover:bg-rose-100"
+                      }`}
+                      title="Click to toggle active status"
+                    >
+                      <span className={`h-1.5 w-1.5 rounded-full ${u.active ? "bg-emerald-500" : "bg-rose-500"}`} />
+                      {u.active ? "Active" : "Inactive"}
+                    </button>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {(users.data ?? []).map((u) => (
-                  <tr key={u.id} className="border-b border-slate-100">
-                    <td className="py-2">{u.full_name}</td>
-                    <td className="text-xs">{u.email}</td>
-                    <td>{u.role.name}</td>
-                    <td>{u.site_id}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+              ))}
+            </tbody>
+          </table>
           )}
         </Card>
 

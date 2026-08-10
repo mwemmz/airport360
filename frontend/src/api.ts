@@ -27,6 +27,35 @@ export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+/** Multipart upload (e.g. video analysis). Does NOT set Content-Type so the browser adds the boundary. */
+export async function apiUpload<T>(path: string, file: File): Promise<T> {
+  const form = new FormData();
+  form.append("file", file);
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const resp = await fetch(`${API_BASE}/v1${path}`, { method: "POST", headers, body: form });
+  if (resp.status === 401) {
+    clearToken();
+    window.location.href = "/login";
+    throw new Error("Unauthorized");
+  }
+  if (!resp.ok) {
+    let detail = `Request failed (${resp.status})`;
+    try {
+      const body = await resp.json();
+      detail = Array.isArray(body.detail)
+        ? body.detail.map((d: { msg: string }) => d.msg).join("; ")
+        : body.detail || detail;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
+  }
+  return resp.json() as Promise<T>;
+}
+
 export async function api<T>(
   path: string,
   options: RequestInit = {}
