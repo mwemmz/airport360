@@ -1,15 +1,19 @@
+import os
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from app.config import get_settings
-from app.database import Base
+from app.database import Base, build_sqlalchemy_url
 from app import models  # noqa: F401  (import models so metadata is populated)
 
 config = context.config
-settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.database_url)
+raw_url = (
+    os.environ.get("TURSO_DATABASE_URL")
+    or os.environ.get("DATABASE_URL")
+    or "sqlite:///./airport360.db"
+)
+config.set_main_option("sqlalchemy.url", build_sqlalchemy_url(raw_url))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

@@ -1,8 +1,14 @@
+import logging
+import threading
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from . import models  # noqa: F401  (import models so metadata is populated for create_all)
 from .config import get_settings
+from .database import Base, engine
+from .seed import seed_all
 from .routers import (
     ai,
     alerts,
@@ -31,6 +37,7 @@ from .routers import (
 )
 
 settings = get_settings()
+logger = logging.getLogger("uvicorn.error")
 
 app = FastAPI(
     title="Airport360",
@@ -119,3 +126,27 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.on_event("startup")
+def startup():
+    # Create tables synchronously so the API works as soon as the port opens.
+    # Wrapped in try/except so a transient Turso outage can't crash the app at boot.
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception:
+        logger.exception(
+            "create_all failed (app stays up; check TURSO_DATABASE_URL / TURSO_AUTH_TOKEN)"
+        )
+
+    # Seeding is heavy (two sites + thousands of rows over the remote Turso
+    # connection); run it in a background thread so the port binds immediately
+    # and Render's health scan passes. seed_all() skips when data already exists.
+    threading.Thread(target=_seed_in_background, name="startup-seed", daemon=True).start()
+
+
+def _seed_in_background():
+    try:
+        seed_all()
+    except Exception:
+        logger.exception("background seed failed (app is up; database may be empty or partial)")

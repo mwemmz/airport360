@@ -1,16 +1,45 @@
+import os
 from collections.abc import Generator
 
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-from .config import get_settings
+load_dotenv()
 
-settings = get_settings()
+TURSO_DATABASE_URL = os.environ.get("TURSO_DATABASE_URL") or os.environ.get("DATABASE_URL")
+TURSO_AUTH_TOKEN = os.environ.get("TURSO_AUTH_TOKEN")
 
-engine = create_engine(
-    settings.database_url,
-    connect_args=settings.engine_connect_args,
-)
+
+def build_sqlalchemy_url(raw_url: str) -> str:
+    """Normalize a Turso/libSQL URL for SQLAlchemy.
+
+    Turso's dashboard shows `libsql://host`; the sqlalchemy-libsql dialect is
+    registered as `sqlite.libsql`, so the URL must use the `sqlite+libsql` scheme.
+    TLS is implied for libsql://, but `?secure=true` makes it explicit (and is
+    idempotent if already present).
+    """
+    url = raw_url.strip()
+    if url.startswith("libsql://") and not url.startswith("sqlite+libsql://"):
+        url = url.replace("libsql://", "sqlite+libsql://", 1)
+    if url.startswith("sqlite+libsql://") and "?" not in url:
+        url = f"{url}?secure=true"
+    return url
+
+
+if TURSO_DATABASE_URL:
+    connect_args = {"auth_token": TURSO_AUTH_TOKEN} if TURSO_AUTH_TOKEN else {}
+    engine = create_engine(
+        build_sqlalchemy_url(TURSO_DATABASE_URL),
+        connect_args=connect_args,
+        pool_pre_ping=True,
+    )
+else:
+    engine = create_engine(
+        os.environ.get("DATABASE_URL", "sqlite:///./airport360.db"),
+        connect_args={"check_same_thread": False},
+    )
+
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 

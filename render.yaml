@@ -1,13 +1,17 @@
 # Render Blueprint — Airport360 (backend + frontend), Turso as the database.
 #
 # Backend:    Render Web Service (Linux) — installs requirements.txt + requirements-turso.txt,
-#             migrates the Turso DB, seeds simulated demo data, runs Uvicorn.
+#             runs Uvicorn. Tables are created and demo data seeded automatically at
+#             startup (seeding runs in a background thread), so the service boots fast
+#             and recovers from transient Turso outages without crashing.
 # Frontend:   Render Static Site — builds with VITE_API_URL pointing at the backend.
 #
 # After creating your Turso database, set these secrets/env vars on the backend service:
-#   DATABASE_URL     sqlite+libsql://<your-db>-<org>.turso.io?secure=true
-#   TURSO_AUTH_TOKEN  the Turso db token (never commit it)
-#   SECRET_KEY        a long random value
+#   TURSO_DATABASE_URL  bare Turso URL, e.g. libsql://<your-db>-<org>.turso.io
+#                       (the code accepts sqlite+libsql://<...>?secure=true or the old
+#                       DATABASE_URL name as a fallback too)
+#   TURSO_AUTH_TOKEN    the Turso db token (never commit it)
+#   SECRET_KEY          a long random value
 services:
   - type: web
     name: airport360-api
@@ -16,15 +20,15 @@ services:
     region: oregon
     rootDir: backend
     buildCommand: pip install -r requirements.txt -r requirements-turso.txt
-    startCommand: alembic upgrade head && python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
         value: 3.13.5
         comment: "Must stay <=3.13: libsql-experimental (Turso driver) has no cp314 wheels"
-      - key: DATABASE_URL
+      - key: TURSO_DATABASE_URL
         sync: false
-        comment: "Turso URL, e.g. sqlite+libsql://<db>-<org>.turso.io?secure=true"
+        comment: "Bare Turso URL, e.g. libsql://<db>-<org>.turso.io (no sqlite+ prefix, no query params)"
       - key: TURSO_AUTH_TOKEN
         sync: false
         comment: "Turso database auth token (secret)"

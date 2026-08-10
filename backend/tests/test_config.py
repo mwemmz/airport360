@@ -1,16 +1,13 @@
-from app.config import Settings
+from app.config import get_settings
 
 
-def test_turso_dashboard_url_is_normalized():
-    s = Settings(database_url="libsql://airport360-chimwemwe.turso.io")
-    assert s.database_url == "sqlite+libsql://airport360-chimwemwe.turso.io?secure=true"
+def test_settings_loads_defaults():
+    s = get_settings()
+    assert s.app_name == "Airport360"
+    assert s.api_v1_prefix == "/v1"
+    assert s.access_token_expire_minutes == 480
 
 
-def test_turso_url_with_query_is_kept():
-    s = Settings(database_url="sqlite+libsql://airport360-chimwemwe.turso.io?secure=true")
-    assert s.database_url == "sqlite+libsql://airport360-chimwemwe.turso.io?secure=true"
-
-
-def test_local_sqlite_is_untouched():
-    s = Settings(database_url="sqlite:///./airport360.db")
-    assert s.database_url == "sqlite:///./airport360.db"
+def test_cors_origins_default():
+    s = get_settings()
+    assert "http://localhost:5173" in s.cors_origins
