@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 
 from . import models  # noqa: F401  (import models so metadata is populated for create_all)
 from .config import get_settings
-from .database import Base, engine
+from .database import Base, engine, ensure_column
 from .seed import seed_all
 from .routers import (
     ai,
@@ -153,6 +153,17 @@ def startup():
         logger.exception(
             "create_all failed (app stays up; check TURSO_DATABASE_URL / TURSO_AUTH_TOKEN)"
         )
+
+    # Column patches for pre-existing databases (create_all never alters
+    # existing tables, so the deployed Turso DB would keep missing newer
+    # columns like users.pin_hash without this).
+    for table, column, col_type in (
+        ("users", "pin_hash", "VARCHAR(255)"),
+    ):
+        try:
+            ensure_column(table, column, col_type)
+        except Exception:
+            logger.exception("ensure_column(%s.%s) failed (app stays up)", table, column)
 
     # Seeding is heavy (two sites + thousands of rows over the remote Turso
     # connection); run it in a background thread so the port binds immediately

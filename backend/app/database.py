@@ -2,7 +2,7 @@ import os
 from collections.abc import Generator
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.pool import NullPool
 
@@ -65,3 +65,21 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+def ensure_column(table: str, column: str, col_type: str) -> None:
+    """Idempotently add a column to an existing table.
+
+    Base.metadata.create_all() only creates missing tables — it never alters
+    tables that already exist. Pre-existing databases (e.g. the deployed Turso
+    DB) therefore lack columns added to the models later. This runs at startup
+    and issues a no-op-safe ``ALTER TABLE`` when the column is absent.
+    """
+    with engine.connect() as conn:
+        try:
+            existing = {col["name"] for col in inspect(conn).get_columns(table)}
+        except Exception:
+            existing = set()
+        if column not in existing:
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
+            conn.commit()
