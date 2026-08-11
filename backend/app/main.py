@@ -154,6 +154,13 @@ def startup():
             "create_all failed (app stays up; check TURSO_DATABASE_URL / TURSO_AUTH_TOKEN)"
         )
 
+    # Seeding is heavy (two sites + thousands of rows over the remote Turso
+    # connection); run it in a background thread so the port binds immediately
+    # and Render's health scan passes. seed_all() skips when data already exists.
+    threading.Thread(target=_seed_in_background, name="startup-seed", daemon=True).start()
+
+
+def _seed_in_background():
     # Column patches for pre-existing databases (create_all never alters
     # existing tables, so the deployed Turso DB would keep missing newer
     # columns like users.pin_hash without this).
@@ -165,13 +172,6 @@ def startup():
         except Exception:
             logger.exception("ensure_column(%s.%s) failed (app stays up)", table, column)
 
-    # Seeding is heavy (two sites + thousands of rows over the remote Turso
-    # connection); run it in a background thread so the port binds immediately
-    # and Render's health scan passes. seed_all() skips when data already exists.
-    threading.Thread(target=_seed_in_background, name="startup-seed", daemon=True).start()
-
-
-def _seed_in_background():
     # Turso's HTTP streams drop long-lived transactions, so a single attempt can
     # fail partway. seed_all() commits in small batches and resets any partial
     # data on the next attempt, so retrying converges to a complete dataset.
