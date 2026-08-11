@@ -166,6 +166,7 @@ def _seed_in_background():
     # columns like users.pin_hash without this).
     for table, column, col_type in (
         ("users", "pin_hash", "VARCHAR(255)"),
+        ("employees", "contract_type", "VARCHAR(24) DEFAULT 'Permanent'"),
     ):
         try:
             ensure_column(table, column, col_type)
