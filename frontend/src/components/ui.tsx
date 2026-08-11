@@ -42,7 +42,7 @@ export const NAV: NavItem[] = [
   { to: "/complaints", label: "Complaints", roles: OPS },
   { to: "/bookings", label: "Booking Marketplace", roles: [...OPS, "Passenger"] },
   { to: "/passenger", label: "Passenger Portal", roles: ["Passenger"] },
-  { to: "/hr", label: "Human Resources", roles: ["Administrator", "Executive", "HR Officer", "Department Head"] },
+  { to: "/hr", label: "Human Resources", roles: ["Administrator", "Executive", "HR Officer", "Department Head", "Staff"] },
   { to: "/procurement", label: "Procurement", roles: ["Administrator", "Executive", "Finance Officer", "HR Officer", "Department Head", "Staff"] },
   { to: "/finance", label: "Finance", roles: ["Administrator", "Executive", "Finance Officer"] },
   { to: "/capacity", label: "Capacity Building", roles: ["Administrator", "Executive", "HR Officer"] },

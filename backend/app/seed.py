@@ -11,13 +11,19 @@ re-running skips chunks that already committed and finishes the rest.
 """
 import time
 from datetime import date, datetime, timedelta
+from datetime import time as day_time
 from random import Random
 
+from fastapi import HTTPException
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import NullPool
 
+from .attendance_service import create_time_log
 from .database import Base, TURSO_AUTH_TOKEN, engine
+from .deps import CurrentUser
+from .hr_cases import add_note, create_case, transition as transition_case
+from .leave_service import accrue_monthly, approve_leave, create_leave_request, mark_taken
 from .models.core import (
     AuditLog,
     BudgetLine,
@@ -32,6 +38,19 @@ from .models.core import (
     TrainingRecord,
     User,
     Vendor,
+)
+from .models.hr import (
+    EmployeeAllowance,
+    HrCase,
+    LeaveRequest,
+    LeaveType,
+    PayrollPeriod,
+    Payslip,
+    PublicHoliday,
+    Shift,
+    ShiftAssignment,
+    StatutoryConfig,
+    TimeLog,
 )
 from .models.operations import (
     Alert,
@@ -49,6 +68,7 @@ from .models.operations import (
     QueueSample,
     TravelAgencyPartner,
 )
+from .payroll_service import generate_payslips, get_or_create_period
 from .security import (
     ROLE_ADMIN,
     ROLE_APPROVER,
@@ -60,8 +80,13 @@ from .security import (
     ROLE_STAFF,
     hash_password,
 )
+from .statutory_config import seed_statutory_config
 
 rng = Random(42)
+
+# Demo payroll/attendance period = the calendar month before today (always complete).
+DEMO_MONTH_END = date(date.today().year, date.today().month, 1) - timedelta(days=1)
+DEMO_MONTH_START = DEMO_MONTH_END.replace(day=1)
 
 DEPARTMENTS = ["Administration", "Operations", "Engineering", "Security", "Finance", "Customer Service", "ICT"]
 JOB_TITLES = {
@@ -429,6 +454,12 @@ def _seed_users(db: Session):
 
     users = []
     for role_name, site, label in user_specs:
+        site_employees = employees_by_site.get(site.id, [])
+        if role_name == ROLE_STAFF and site_employees:
+            # Longest-tenured employee so the staff self-service demo has balances.
+            employee_id = max(site_employees, key=lambda e: e.hire_date).id
+        else:
+            employee_id = rng.choice(site_employees).id if site_employees else None
         users.append(
             User(
                 email=f"{slug[role_name]}.{site.code.lower()}@airport360.com",
@@ -436,7 +467,7 @@ def _seed_users(db: Session):
                 hashed_password=hash_password("Demo1234!"),
                 role_id=role_map[role_name].id,
                 site_id=site.id,
-                employee_id=rng.choice(employees_by_site[site.id]).id if employees_by_site.get(site.id) else None,
+                employee_id=employee_id,
             )
         )
     # Extra staff users so every role is reachable
@@ -801,6 +832,231 @@ def _seed_partners_bookings(db: Session):
     db.commit()
 
 
+# ---------------------------------------------------------------------------
+# Chunk 20: HR foundations — statutory config, leave types, shifts, holidays
+# ---------------------------------------------------------------------------
+def _seed_hr_foundations(db: Session):
+    if db.scalar(select(LeaveType).limit(1)):
+        return True
+
+    seed_statutory_config(db)
+
+    leave_types = [
+        LeaveType(code="ANL", name="Annual Leave", category="annual", paid=True, accrual_days_per_month=2.0, eligible_after_months=6, max_carryover_days=15.0, paid_out_year_end=True, config_key="leave_annual", contract_types="Permanent,Fixed-Term"),
+        LeaveType(code="SICK", name="Sick Leave", category="sick", paid=True, grant_days_per_year=26.0, requires_document=True, contract_types="Permanent,Fixed-Term,Casual"),
+        LeaveType(code="MAT", name="Maternity Leave", category="maternity", paid=True, grant_days_per_year=120.0, contract_types="Permanent,Fixed-Term"),
+        LeaveType(code="PAT", name="Paternity Leave", category="paternity", paid=True, grant_days_per_year=10.0, contract_types="Permanent,Fixed-Term"),
+        LeaveType(code="FAM", name="Family Responsibility", category="family_responsibility", paid=True, grant_days_per_year=5.0),
+        LeaveType(code="COM", name="Compassionate Leave", category="compassionate", paid=True, grant_days_per_year=5.0),
+        LeaveType(code="STU", name="Study Leave", category="study", paid=False, grant_days_per_year=20.0),
+        LeaveType(code="UNP", name="Unpaid Leave", category="unpaid", paid=False),
+    ]
+    db.add_all(leave_types)
+    db.flush()
+
+    sites = list(db.scalars(select(Site).order_by(Site.id)))
+    shift_specs = [
+        ("Day", day_time(8, 0), day_time(16, 0), "day", 8.0, 3),
+        ("Morning", day_time(6, 0), day_time(14, 0), "day", 8.0, 2),
+        ("Afternoon", day_time(14, 0), day_time(22, 0), "day", 8.0, 2),
+        ("Night", day_time(18, 0), day_time(6, 0), "night", 8.0, 2),
+    ]
+    for site in sites:
+        for name, s, e, stype, hours, minstaff in shift_specs:
+            db.add(Shift(site_id=site.id, name=name, start_time=s, end_time=e, shift_type=stype, standard_hours=hours, min_staff=minstaff))
+
+    holidays = [
+        PublicHoliday(name="New Year's Day", holiday_date=date(2026, 1, 1)),
+        PublicHoliday(name="Good Friday", holiday_date=date(2026, 4, 3)),
+        PublicHoliday(name="Labour Day", holiday_date=date(2026, 5, 1)),
+        PublicHoliday(name="Africa Freedom Day", holiday_date=date(2026, 5, 25)),
+        PublicHoliday(name="Heroes' Day", holiday_date=date(2026, 7, 6)),
+        PublicHoliday(name="Independence Day", holiday_date=date(2026, 10, 24)),
+        PublicHoliday(name="Christmas Day", holiday_date=date(2026, 12, 25)),
+    ]
+    db.add_all(holidays)
+    db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Chunk 21: leave balances + a small request workflow demo
+# ---------------------------------------------------------------------------
+def _seed_hr_leave(db: Session):
+    if db.scalar(select(LeaveRequest).limit(1)):
+        return True
+
+    annual = db.scalar(select(LeaveType).where(LeaveType.code == "ANL"))
+    sick = db.scalar(select(LeaveType).where(LeaveType.code == "SICK"))
+    sites = list(db.scalars(select(Site).order_by(Site.id)))
+    employees = list(db.scalars(select(Employee).order_by(Employee.id)))
+    employees_by_site: dict[int, list[Employee]] = {}
+    for emp in employees:
+        employees_by_site.setdefault(emp.site_id, []).append(emp)
+
+    for site in sites:
+        hr_user = db.scalar(select(User).where(User.email == f"hr.{site.code.lower()}@airport360.com"))
+        staff_user = db.scalar(select(User).where(User.email == f"staff.{site.code.lower()}@airport360.com"))
+        if not hr_user:
+            continue
+        current = CurrentUser(hr_user, site)
+        requester_id = staff_user.id if staff_user else hr_user.id
+
+        # Accrue annual leave for every eligible employee first so balances exist
+        # for the demo requests and for self-service views.
+        accrue_monthly(db, current, site.id, DEMO_MONTH_END.year, DEMO_MONTH_END.month)
+
+        eligible = [
+            e for e in employees_by_site.get(site.id, [])
+            if (DEMO_MONTH_END - e.hire_date).days // 30 >= 6
+        ]
+        scenarios = [
+            ("taken", eligible[0], annual, DEMO_MONTH_END - timedelta(days=21), DEMO_MONTH_END - timedelta(days=17)),
+            ("approved", eligible[1] if len(eligible) > 1 else eligible[0], annual, DEMO_MONTH_END + timedelta(days=5), DEMO_MONTH_END + timedelta(days=9)),
+            ("requested", eligible[2] if len(eligible) > 2 else eligible[0], sick, DEMO_MONTH_END - timedelta(days=7), DEMO_MONTH_END - timedelta(days=5)),
+        ]
+        for action, emp, ltype, start, end in scenarios:
+            if not emp:
+                continue
+            try:
+                req = create_leave_request(db, current, emp.id, ltype.id, start, end, f"Simulated {ltype.name.lower()} request", requester_id)
+                if action == "taken":
+                    req = approve_leave(db, current, req)
+                    req = mark_taken(db, current, req)
+                elif action == "approved":
+                    req = approve_leave(db, current, req)
+            except HTTPException:
+                db.rollback()
+        db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Chunk 22: shift roster + time logs for the demo month
+# ---------------------------------------------------------------------------
+def _seed_hr_attendance(db: Session):
+    if db.scalar(select(ShiftAssignment).limit(1)):
+        return True
+
+    sites = list(db.scalars(select(Site).order_by(Site.id)))
+    employees = list(db.scalars(select(Employee).order_by(Employee.id)))
+    employees_by_site: dict[int, list[Employee]] = {}
+    for emp in employees:
+        employees_by_site.setdefault(emp.site_id, []).append(emp)
+    shifts = list(db.scalars(select(Shift).order_by(Shift.site_id, Shift.id)))
+    shifts_by_site: dict[int, list[Shift]] = {}
+    for s in shifts:
+        shifts_by_site.setdefault(s.site_id, []).append(s)
+
+    for site in sites:
+        hr_user = db.scalar(select(User).where(User.email == f"hr.{site.code.lower()}@airport360.com"))
+        if not hr_user:
+            continue
+        day_shift = next(s for s in shifts_by_site[site.id] if s.name == "Day")
+        night_shift = next(s for s in shifts_by_site[site.id] if s.name == "Night")
+        site_employees = sorted(employees_by_site.get(site.id, []), key=lambda e: e.id)
+        night_worker_ids = {e.id for e in site_employees[:3]}
+
+        # Last Saturday before the demo month end — covered by a single night worker
+        # so the roster shows an intentional understaffed day.
+        understaffed_day = DEMO_MONTH_END - timedelta(days=(DEMO_MONTH_END.weekday() - 5) % 7)
+        start = DEMO_MONTH_END - timedelta(days=27)
+
+        cur = start
+        while cur <= DEMO_MONTH_END:
+            for emp in site_employees:
+                is_night = emp.id in night_worker_ids
+                if is_night:
+                    if cur.weekday() >= 6:
+                        continue
+                    if cur == understaffed_day and emp != site_employees[0]:
+                        continue
+                    shift = night_shift
+                    clock_in = datetime.combine(cur, day_time(18, 0))
+                    clock_out = datetime.combine(cur + timedelta(days=1), day_time(6, 0))
+                else:
+                    if cur.weekday() >= 5:
+                        continue
+                    shift = day_shift
+                    clock_in = datetime.combine(cur, day_time(9, 0))
+                    clock_out = datetime.combine(cur, day_time(17, 0))
+                db.add(
+                    ShiftAssignment(
+                        site_id=site.id,
+                        employee_id=emp.id,
+                        shift_id=shift.id,
+                        work_date=cur,
+                        created_by=hr_user.id,
+                    )
+                )
+                create_time_log(db, hr_user.id, site.id, emp.id, cur, clock_in, clock_out, shift.id, notes="Simulated attendance")
+            cur += timedelta(days=1)
+        db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Chunk 23: payroll — allowances + a processed demo period with payslips
+# ---------------------------------------------------------------------------
+def _seed_hr_payroll(db: Session):
+    if db.scalar(select(PayrollPeriod).limit(1)):
+        return True
+
+    sites = list(db.scalars(select(Site).order_by(Site.id)))
+    employees = list(db.scalars(select(Employee).order_by(Employee.id)))
+    employees_by_site: dict[int, list[Employee]] = {}
+    for emp in employees:
+        employees_by_site.setdefault(emp.site_id, []).append(emp)
+    admin = db.scalar(select(User).where(User.email == "admin.ku@airport360.com"))
+
+    for site in sites:
+        if not admin:
+            continue
+        current = CurrentUser(admin, site)
+        for emp in employees_by_site.get(site.id, [])[:4]:
+            db.add(EmployeeAllowance(site_id=site.id, employee_id=emp.id, allowance_type="Housing", amount=300.0))
+        db.commit()
+        period = get_or_create_period(db, current, site.id, DEMO_MONTH_START, DEMO_MONTH_END)
+        generate_payslips(db, current, period)
+
+
+# ---------------------------------------------------------------------------
+# Chunk 24: HR cases with a note trail across statuses
+# ---------------------------------------------------------------------------
+def _seed_hr_cases(db: Session):
+    if db.scalar(select(HrCase).limit(1)):
+        return True
+
+    sites = list(db.scalars(select(Site).order_by(Site.id)))
+    employees = list(db.scalars(select(Employee).order_by(Employee.id)))
+    employees_by_site: dict[int, list[Employee]] = {}
+    for emp in employees:
+        employees_by_site.setdefault(emp.site_id, []).append(emp)
+
+    for site in sites:
+        hr_user = db.scalar(select(User).where(User.email == f"hr.{site.code.lower()}@airport360.com"))
+        staff_user = db.scalar(select(User).where(User.email == f"staff.{site.code.lower()}@airport360.com"))
+        if not hr_user:
+            continue
+        current = CurrentUser(hr_user, site)
+        site_employees = employees_by_site.get(site.id, [])
+
+        subject = staff_user.employee_id if staff_user and staff_user.employee_id else (site_employees[0].id if site_employees else None)
+        if subject:
+            case = create_case(db, current, site.id, subject, "grievance", "Shift allocation complaint", "Employee feels the roster allocation is unbalanced.", "MEDIUM")
+            add_note(db, current, case, "Gathering more detail from the employee.", is_private=True)
+
+        if len(site_employees) > 1:
+            case2 = create_case(db, current, site.id, site_employees[1].id, "performance", "Quarterly performance review", "Pending performance conversation.", "LOW")
+            transition_case(db, current, case2, "Under Review")
+
+        if len(site_employees) > 2:
+            create_case(db, current, site.id, site_employees[2].id, "wellness", "Wellness check-in", "Follow-up after extended sick leave.", "LOW")
+
+        if len(site_employees) > 3:
+            case4 = create_case(db, current, site.id, site_employees[3].id, "attendance", "Repeated late clock-ins", "Several late clock-ins this month.", "MEDIUM")
+            transition_case(db, current, case4, "Investigating")
+
+        db.commit()
+
+
 def _run_chunk(name: str, fn):
     for attempt in range(1, 4):
         db: Session = SeedSession()
@@ -827,7 +1083,8 @@ def _summary() -> str:
         return (
             f"Seeded {count(Site)} sites, {count(Employee)} employees, "
             f"{count(Expense)} expenses, {count(PurchaseRequisition)} requisitions, "
-            f"{count(Flight)} flights, {count(Baggage)} bags."
+            f"{count(Flight)} flights, {count(Baggage)} bags, "
+            f"{count(TimeLog)} time logs, {count(Payslip)} payslips, {count(HrCase)} HR cases."
         )
     finally:
         db.close()
@@ -854,6 +1111,11 @@ def seed_all() -> None:
     _run_chunk("alerts", _seed_alerts)
     _run_chunk("complaints", _seed_complaints)
     _run_chunk("partners_bookings", _seed_partners_bookings)
+    _run_chunk("hr_foundations", _seed_hr_foundations)
+    _run_chunk("hr_leave", _seed_hr_leave)
+    _run_chunk("hr_attendance", _seed_hr_attendance)
+    _run_chunk("hr_payroll", _seed_hr_payroll)
+    _run_chunk("hr_cases", _seed_hr_cases)
     print(_summary())
 
 

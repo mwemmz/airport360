@@ -155,7 +155,7 @@ export default function App() {
             <Route
               path="/hr"
               element={
-                <RequireRole roles={["Administrator", "Executive", "HR Officer", "Department Head"]}>
+                <RequireRole roles={["Administrator", "Executive", "HR Officer", "Department Head", "Staff"]}>
                   <HR />
                 </RequireRole>
               }
