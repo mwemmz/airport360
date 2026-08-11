@@ -39,6 +39,7 @@ from .routers import (
     roster,
     sites,
     statutory,
+    kiosk,
     travel_agencies,
     users,
 )
@@ -123,7 +124,6 @@ for r in (
     complaints,
     travel_agencies,
     bookings,
-    kiosk,
 ):
     app.include_router(r.router, prefix=settings.api_v1_prefix)
 

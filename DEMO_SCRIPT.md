@@ -13,6 +13,7 @@
 | Finance Officer | `finance.ku@airport360.com` | `Demo1234!` |
 | Operations Manager | `ops.ku@airport360.com` | `Demo1234!` |
 | Department Head (Approver) | `approver.ku@airport360.com` | `Demo1234!` |
+| Frontline Staff (Kiosk) | employee `EMP-KU-1009` | PIN `1234` |
 
 ---
 
@@ -44,6 +45,18 @@ Navigate to **Human Resources** (sidebar → Human Resources).
 - **Departments** — used across Finance and Procurement.
 
 > **Narrator cue:** "The MoU names HR as the first core ERP area. Here we see the full employee lifecycle — records, departments, and per-employee training and certification tracking, because capacity building is one of the partnership's explicit goals."
+
+### 2a. Frontline Staff Kiosk (2 min)
+
+From the login screen, click **Frontline staff kiosk** (or open `/kiosk`).
+
+- Sign in with the shared-terminal PIN login: employee number `EMP-KU-1009`, PIN `1234` (Frontline Staff role only).
+- **Today** tab — clock **in** and **out**; live shift status and leave balance at a glance.
+- **Shifts** tab — upcoming roster assignments.
+- **Leave** tab — request leave and see your balance (grant types don't need a balance).
+- **My cases** tab — raise and track an HR case.
+
+> **Narrator cue:** "Shift staff get a purpose-built shared terminal — clock in/out, shifts, leave and HR cases from one screen. It reuses the exact same attendance, leave and case engines as HR, so a kiosk clock-in shows up in payroll with zero re-keying."
 
 ---
 

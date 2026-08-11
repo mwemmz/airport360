@@ -41,12 +41,15 @@ def kiosk_login(body: KioskLoginIn, db: DbSession, request: Request):
     if not emp:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid employee number or PIN")
     user = db.scalar(
-        select(User).options(selectinload(User.role)).where(User.employee_id == emp.id)
+        select(User)
+        .options(selectinload(User.role))
+        .where(
+            User.employee_id == emp.id,
+            User.role.has(name=ROLE_FRONTLINE),
+        )
     )
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid employee number or PIN")
-    if user.role.name != ROLE_FRONTLINE:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Kiosk login is only available to Frontline Staff")
     if not user.pin_hash or not verify_password(body.pin.strip(), user.pin_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid employee number or PIN")
     if not user.active:

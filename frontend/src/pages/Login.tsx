@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "../auth";
 import { ErrorMessage } from "../components/ui";
-import { Lock, Mail, Plane, ShieldCheck, Sparkles, KeyRound } from "lucide-react";
+import { Lock, Mail, Plane, ShieldCheck, Sparkles, KeyRound, Fingerprint } from "lucide-react";
 
 export default function Login() {
   const { user, login } = useAuth();
@@ -153,6 +153,13 @@ export default function Login() {
                 <div className="text-slate-400">Finance Officer · site 1</div>
               </div>
             </div>
+
+            <Link
+              to="/kiosk"
+              className="mt-4 flex items-center justify-center gap-2 rounded-xl bg-slate-900 text-white text-sm font-semibold py-3 hover:bg-slate-800 transition-colors"
+            >
+              <Fingerprint className="w-4 h-4 text-indigo-400" /> Frontline staff kiosk →
+            </Link>
           </div>
         </div>
       </div>

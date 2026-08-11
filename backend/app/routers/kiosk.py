@@ -56,6 +56,7 @@ def kiosk_home(
     balances = list_balances(db, emp.site_id, employee_id=emp.id)
     return {
         "employee": {
+            "id": emp.id,
             "employee_number": emp.employee_number,
             "first_name": emp.first_name,
             "last_name": emp.last_name,

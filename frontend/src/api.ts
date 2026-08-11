@@ -5,6 +5,8 @@ const SITE_KEY = "airport360_active_site";
 // In local dev it stays empty and the Vite proxy forwards /v1 to localhost:8000.
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined ?? "").replace(/\/+$/, "");
 
+export { API_BASE };
+
 export type User = {
   id: number;
   email: string;

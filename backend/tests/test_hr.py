@@ -327,3 +327,147 @@ def test_hr_cases_flow_and_rbac(auth_headers, ku_hr_headers, ku_staff_headers, e
 
 def test_employees_list_denied_for_staff(ku_staff_headers, client):
     assert client.get("/v1/hr/employees", headers=ku_staff_headers).status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Kiosk (Frontline Staff shared-terminal)
+# ---------------------------------------------------------------------------
+
+def _frontline_user(db, idx=0):
+    from sqlalchemy import select
+
+    from app.models.core import User
+    from app.security import ROLE_FRONTLINE
+
+    users = [u for u in db.scalars(select(User)).all() if u.role.name == ROLE_FRONTLINE]
+    assert users, "seeded frontline users expected"
+    return users[idx % len(users)]
+
+
+def _kiosk_token(client, db, idx=0):
+    from app.models.core import Employee
+
+    user = _frontline_user(db, idx)
+    emp = db.get(Employee, user.employee_id)
+    resp = client.post("/v1/auth/kiosk", json={"employee_number": emp.employee_number, "pin": "1234"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["user"]["role"]["name"] == "Frontline Staff"
+    return resp.json()["access_token"]
+
+
+def _kiosk_headers(client, db, idx=0):
+    return {"Authorization": f"Bearer {_kiosk_token(client, db, idx)}"}
+
+
+def test_kiosk_login_and_home(client, db):
+    hdrs = _kiosk_headers(client, db)
+    home = client.get("/v1/kiosk/home", headers=hdrs)
+    assert home.status_code == 200, home.text
+    body = home.json()
+    assert body["employee"]["employee_number"]
+    assert "clock_in" in body["today"] and "clock_out" in body["today"]
+    assert body["balance"], "frontline employee should have accrued leave balances"
+    assert "next_shift" in body and "open_cases" in body
+
+    shifts = client.get("/v1/kiosk/shifts", headers=hdrs)
+    assert shifts.status_code == 200
+
+
+def test_kiosk_clock_in_out(client, db):
+    hdrs = _kiosk_headers(client, db, idx=1)
+    # No log exists for today yet, so closing first must 400.
+    assert client.post("/v1/kiosk/clock", json={"action": "out"}, headers=hdrs).status_code == 400
+
+    first = client.post("/v1/kiosk/clock", json={"action": "in"}, headers=hdrs)
+    assert first.status_code == 200, first.text
+    assert first.json()["clock_in"] and first.json()["clock_out"] is None
+    assert first.json()["source"] == "kiosk"
+
+    assert client.post("/v1/kiosk/clock", json={"action": "in"}, headers=hdrs).status_code == 400
+
+    second = client.post("/v1/kiosk/clock", json={"action": "out"}, headers=hdrs)
+    assert second.status_code == 200, second.text
+    assert second.json()["clock_out"] and second.json()["hours_worked"] >= 0
+
+    assert client.post("/v1/kiosk/clock", json={"action": "out"}, headers=hdrs).status_code == 400
+    assert client.post("/v1/kiosk/clock", json={"action": "sideways"}, headers=hdrs).status_code == 422
+
+
+def test_kiosk_leave_self_service(client, db):
+    from sqlalchemy import select
+
+    from app.models.core import Employee
+
+    hdrs = _kiosk_headers(client, db)
+    types = client.get("/v1/kiosk/leave-types", headers=hdrs)
+    assert types.status_code == 200
+    grant_type = next(t for t in types.json() if t["accrual_days_per_month"] == 0)
+    assert client.get("/v1/kiosk/balance", headers=hdrs).status_code == 200
+
+    my_id = _frontline_user(db).employee_id
+    other_id = [e.id for e in db.scalars(select(Employee)) if e.id != my_id][0]
+
+    # Self-service endpoints never act on someone else's record.
+    resp = client.post(
+        "/v1/kiosk/leave",
+        json={"employee_id": other_id, "leave_type_id": grant_type["id"], "start_date": "2099-01-05", "end_date": "2099-01-06"},
+        headers=hdrs,
+    )
+    assert resp.status_code == 403
+
+    resp = client.post(
+        "/v1/kiosk/leave",
+        json={"employee_id": my_id, "leave_type_id": grant_type["id"], "start_date": "2099-01-05", "end_date": "2099-01-06", "reason": "kiosk self-service"},
+        headers=hdrs,
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["status"] == "Requested"
+
+
+def test_kiosk_case_self_service(client, db):
+    from sqlalchemy import select
+
+    from app.models.core import Employee
+
+    hdrs = _kiosk_headers(client, db)
+    my_id = _frontline_user(db).employee_id
+    other_id = [e.id for e in db.scalars(select(Employee)) if e.id != my_id][0]
+
+    resp = client.post(
+        "/v1/kiosk/case",
+        json={"employee_id": other_id, "category": "grievance", "severity": "HIGH", "title": "nope", "description": "other"},
+        headers=hdrs,
+    )
+    assert resp.status_code == 403
+
+    resp = client.post(
+        "/v1/kiosk/case",
+        json={"employee_id": my_id, "category": "wellness", "severity": "LOW", "title": "Lockeroom light broken", "description": "kiosk test"},
+        headers=hdrs,
+    )
+    assert resp.status_code == 201, resp.text
+    case_number = resp.json()["case_number"]
+
+    mine = client.get("/v1/kiosk/cases", headers=hdrs)
+    assert mine.status_code == 200
+    assert any(c["case_number"] == case_number for c in mine.json())
+
+
+def test_kiosk_denies_non_frontline(client, db, ku_staff_headers):
+    from sqlalchemy import select
+
+    from app.models.core import Employee, User
+    from app.security import ROLE_FRONTLINE
+
+    assert client.get("/v1/kiosk/home", headers=ku_staff_headers).status_code == 403
+
+    # An employee without any Frontline Staff account cannot use the PIN login.
+    users = db.scalars(select(User)).all()
+    frontline_ids = {u.employee_id for u in users if u.role.name == ROLE_FRONTLINE}
+    non_front = next(u for u in users if u.employee_id and u.employee_id not in frontline_ids)
+    emp = db.get(Employee, non_front.employee_id)
+    assert client.post("/v1/auth/kiosk", json={"employee_number": emp.employee_number, "pin": "1234"}).status_code == 401
+
+    # Wrong PIN on a real frontline employee is also rejected.
+    frontline_emp = db.get(Employee, _frontline_user(db).employee_id)
+    assert client.post("/v1/auth/kiosk", json={"employee_number": frontline_emp.employee_number, "pin": "9999"}).status_code == 401

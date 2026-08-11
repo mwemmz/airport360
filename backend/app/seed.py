@@ -74,6 +74,7 @@ from .security import (
     ROLE_APPROVER,
     ROLE_EXECUTIVE,
     ROLE_FINANCE,
+    ROLE_FRONTLINE,
     ROLE_HR,
     ROLE_OPS,
     ROLE_PASSENGER,
@@ -142,7 +143,7 @@ def _seed_sites_roles_vendors(db: Session):
     db.add_all(sites)
     db.flush()
 
-    roles = [Role(name=r) for r in [ROLE_ADMIN, ROLE_EXECUTIVE, ROLE_FINANCE, ROLE_HR, ROLE_APPROVER, ROLE_STAFF, ROLE_OPS, ROLE_PASSENGER]]
+    roles = [Role(name=r) for r in [ROLE_ADMIN, ROLE_EXECUTIVE, ROLE_FINANCE, ROLE_HR, ROLE_APPROVER, ROLE_STAFF, ROLE_FRONTLINE, ROLE_OPS, ROLE_PASSENGER]]
     db.add_all(roles)
     db.flush()
 
@@ -483,6 +484,29 @@ def _seed_users(db: Session):
                     employee_id=emp.id,
                 )
             )
+    # Frontline Staff kiosk users: shared-terminal PIN login, PIN = 1234.
+    # Frontline Staff kiosk users: shared-terminal PIN login, PIN = 1234.
+    # Deterministically the first two Security Officers per site (e.g. EMP-KU-1009)
+    # so demo credentials stay stable. The kiosk auth query filters by role, so a
+    # shared employee record can never be confused with a non-frontline account.
+    frontline_users = []
+    for site in sites:
+        frontline_emps = [
+            e for e in employees_by_site.get(site.id, []) if e.job_title == "Security Officer"
+        ]
+        for i, emp in enumerate(frontline_emps[:2]):
+            frontline_users.append(
+                User(
+                    email=f"kiosk.{site.code.lower()}{i}@airport360.com",
+                    full_name=f"{emp.first_name} {emp.last_name}",
+                    hashed_password=hash_password("Demo1234!"),
+                    pin_hash=hash_password("1234"),
+                    role_id=role_map[ROLE_FRONTLINE].id,
+                    site_id=site.id,
+                    employee_id=emp.id,
+                )
+            )
+    users.extend(frontline_users)
     db.add_all(users)
     db.commit()
 
