@@ -121,8 +121,8 @@ def create_time_log(
     return log
 
 
-def kiosk_clock(db: Session, employee_id: int, site_id: int, action: str, now: datetime | None = None) -> TimeLog:
-    """Frontline-staff kiosk clock: 'in' opens today's log, 'out' closes it and
+def staff_portal_clock(db: Session, employee_id: int, site_id: int, action: str, now: datetime | None = None) -> TimeLog:
+    """Frontline-staff portal clock: 'in' opens today's log, 'out' closes it and
     recomputes hours/night/overtime exactly as the manual-creation path does."""
     now = now or datetime.now()
     employee = db.get(Employee, employee_id)
@@ -165,7 +165,7 @@ def kiosk_clock(db: Session, employee_id: int, site_id: int, action: str, now: d
             night_hours=0.0,
             public_holiday=is_public_holiday(db, site_id, now.date()),
             is_rest_day=now.weekday() >= 5,
-            source="kiosk",
+            source="staff-portal",
         )
         db.add(log)
         db.flush()

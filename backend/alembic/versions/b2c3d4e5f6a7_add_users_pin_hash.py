@@ -1,4 +1,4 @@
-"""Add users.pin_hash for front-line staff kiosk PIN login
+"""Add users.pin_hash for frontline-staff portal PIN login
 
 Revision ID: b2c3d4e5f6a7
 Revises: a9f0c1d2e3b4

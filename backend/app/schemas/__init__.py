@@ -239,13 +239,13 @@ class LoginIn(BaseModel):
     password: str
 
 
-class KioskLoginIn(BaseModel):
-    """Kiosk entry point: employee number + short numeric PIN (Frontline Staff only)."""
+class StaffPortalLoginIn(BaseModel):
+    """Staff portal entry point: employee number + short numeric PIN (Frontline Staff only)."""
     employee_number: str
     pin: str
 
 
-class KioskClockIn(BaseModel):
+class StaffPortalClockIn(BaseModel):
     action: str = Field(pattern="^(in|out)$")
 
 

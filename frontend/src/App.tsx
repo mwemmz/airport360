@@ -21,7 +21,7 @@ import Procurement from "./pages/Procurement";
 import Finance from "./pages/Finance";
 import CapacityBuilding from "./pages/CapacityBuilding";
 import Admin from "./pages/Admin";
-import Kiosk from "./pages/Kiosk";
+import StaffPortal from "./pages/StaffPortal";
 
 const OPS = ["Administrator", "Executive", "Operations Manager"];
 
@@ -40,7 +40,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/kiosk" element={<Kiosk />} />
+          <Route path="/staff-portal" element={<StaffPortal />} />
           <Route element={<Layout />}>
             <Route
               path="/"

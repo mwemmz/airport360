@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 from ..audit import log_action
 from ..deps import CurrentUser, DbSession, get_current_user
 from ..models.core import Employee, User
-from ..schemas import KioskLoginIn, LoginIn, TokenOut, UserOut
+from ..schemas import LoginIn, StaffPortalLoginIn, TokenOut, UserOut
 from ..security import (
     ROLE_FRONTLINE,
     create_access_token,
@@ -34,8 +34,8 @@ def login(body: LoginIn, db: DbSession, request: Request):
     return TokenOut(access_token=token, user=UserOut.model_validate(user))
 
 
-@router.post("/kiosk", response_model=TokenOut)
-def kiosk_login(body: KioskLoginIn, db: DbSession, request: Request):
+@router.post("/staff-portal", response_model=TokenOut)
+def staff_portal_login(body: StaffPortalLoginIn, db: DbSession, request: Request):
     """Shared-terminal login for Frontline Staff: employee number + numeric PIN."""
     emp = db.scalar(select(Employee).where(Employee.employee_number == body.employee_number.strip()))
     if not emp:
@@ -56,7 +56,7 @@ def kiosk_login(body: KioskLoginIn, db: DbSession, request: Request):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is disabled")
 
     token = create_access_token(user.id, user.site_id, user.role.name)
-    log_action(db, user.id, user.site_id, "kiosk_login", "user", user.id, f"kiosk {body.employee_number}", request)
+    log_action(db, user.id, user.site_id, "staff_portal_login", "user", user.id, f"staff-portal {body.employee_number}", request)
     db.commit()
     return TokenOut(access_token=token, user=UserOut.model_validate(user))
 

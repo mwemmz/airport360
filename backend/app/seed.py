@@ -484,10 +484,9 @@ def _seed_users(db: Session):
                     employee_id=emp.id,
                 )
             )
-    # Frontline Staff kiosk users: shared-terminal PIN login, PIN = 1234.
-    # Frontline Staff kiosk users: shared-terminal PIN login, PIN = 1234.
+    # Frontline Staff portal users: shared-terminal PIN login, PIN = 1234.
     # Deterministically the first two Security Officers per site (e.g. EMP-KU-1009)
-    # so demo credentials stay stable. The kiosk auth query filters by role, so a
+    # so demo credentials stay stable. The portal auth query filters by role, so a
     # shared employee record can never be confused with a non-frontline account.
     frontline_users = []
     for site in sites:
@@ -497,7 +496,7 @@ def _seed_users(db: Session):
         for i, emp in enumerate(frontline_emps[:2]):
             frontline_users.append(
                 User(
-                    email=f"kiosk.{site.code.lower()}{i}@airport360.com",
+                    email=f"portal.{site.code.lower()}{i}@airport360.com",
                     full_name=f"{emp.first_name} {emp.last_name}",
                     hashed_password=hash_password("Demo1234!"),
                     pin_hash=hash_password("1234"),
@@ -1110,6 +1109,54 @@ def _summary() -> str:
             f"{count(Flight)} flights, {count(Baggage)} bags, "
             f"{count(TimeLog)} time logs, {count(Payslip)} payslips, {count(HrCase)} HR cases."
         )
+    finally:
+        db.close()
+
+
+def backfill_frontline_pins() -> None:
+    """Ensure every site has its two demo frontline-portal logins (PIN 1234).
+
+    Pre-existing databases were seeded before the frontline-portal feature, so
+    the ``users`` chunk skips them entirely (users already exist) and no
+    Frontline Staff account has a PIN. This runs on every boot and is a no-op
+    when the accounts are already present.
+    """
+    db: Session = SeedSession()
+    try:
+        sites = list(db.scalars(select(Site).order_by(Site.id)))
+        roles = list(db.scalars(select(Role).order_by(Role.id)))
+        employees = list(db.scalars(select(Employee).order_by(Employee.id)))
+        employees_by_site: dict[int, list[Employee]] = {}
+        for emp in employees:
+            employees_by_site.setdefault(emp.site_id, []).append(emp)
+        role_map = {r.name: r for r in roles}
+        frontline_role = role_map.get(ROLE_FRONTLINE)
+        if not frontline_role or not sites:
+            return
+        for site in sites:
+            frontline_emps = [
+                e for e in employees_by_site.get(site.id, []) if e.job_title == "Security Officer"
+            ]
+            for i, emp in enumerate(frontline_emps[:2]):
+                user = db.scalar(
+                    select(User).where(User.employee_id == emp.id, User.role_id == frontline_role.id)
+                )
+                if user is None:
+                    user = User(
+                        email=f"portal.{site.code.lower()}{i}@airport360.com",
+                        full_name=f"{emp.first_name} {emp.last_name}",
+                        hashed_password=hash_password("Demo1234!"),
+                        pin_hash=hash_password("1234"),
+                        role_id=frontline_role.id,
+                        site_id=site.id,
+                        employee_id=emp.id,
+                    )
+                    db.add(user)
+                    print(f"[seed] staff-portal: created PIN login for {emp.employee_number}")
+                elif not user.pin_hash:
+                    user.pin_hash = hash_password("1234")
+                    print(f"[seed] staff-portal: set PIN for {emp.employee_number}")
+        db.commit()
     finally:
         db.close()
 

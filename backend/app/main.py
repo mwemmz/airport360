@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from . import models  # noqa: F401  (import models so metadata is populated for create_all)
 from .config import get_settings
 from .database import Base, engine, ensure_column
-from .seed import seed_all
+from .seed import backfill_frontline_pins, seed_all
 from .routers import (
     ai,
     alerts,
@@ -39,7 +39,7 @@ from .routers import (
     roster,
     sites,
     statutory,
-    kiosk,
+    staff_portal,
     travel_agencies,
     users,
 )
@@ -103,7 +103,7 @@ for r in (
     roster,
     hr_cases,
     statutory,
-    kiosk,
+    staff_portal,
     procurement,
     finance,
     bi,
@@ -179,7 +179,15 @@ def _seed_in_background():
     for attempt in range(1, 4):
         try:
             seed_all()
-            return
+            break
         except Exception:
             logger.exception("background seed attempt %s of 3 failed (app stays up)", attempt)
             time.sleep(10 * attempt)
+
+    # Pre-existing databases were seeded before the frontline-portal feature, so
+    # no Frontline Staff account has a PIN. Backfill the two demo PIN logins per
+    # site (no-op when already present) even if seed_all() bailed.
+    try:
+        backfill_frontline_pins()
+    except Exception:
+        logger.exception("backfill_frontline_pins() failed (app stays up)")

@@ -155,10 +155,10 @@ export default function Login() {
             </div>
 
             <Link
-              to="/kiosk"
+              to="/staff-portal"
               className="mt-4 flex items-center justify-center gap-2 rounded-xl bg-slate-900 text-white text-sm font-semibold py-3 hover:bg-slate-800 transition-colors"
             >
-              <Fingerprint className="w-4 h-4 text-indigo-400" /> Frontline staff kiosk →
+              <Fingerprint className="w-4 h-4 text-indigo-400" /> Frontline staff portal →
             </Link>
           </div>
         </div>

@@ -12,7 +12,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
-const KIOSK_TOKEN_KEY = "airport360_kiosk_token";
+const PORTAL_TOKEN_KEY = "airport360_staff_portal_token";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -69,11 +69,11 @@ type CaseRow = {
 
 function kapi<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  const token = localStorage.getItem(KIOSK_TOKEN_KEY);
+  const token = localStorage.getItem(PORTAL_TOKEN_KEY);
   if (token) headers["Authorization"] = `Bearer ${token}`;
   return fetch(`${API_BASE}/v1${path}`, { ...options, headers }).then(async (resp) => {
     if (resp.status === 401) {
-      localStorage.removeItem(KIOSK_TOKEN_KEY);
+      localStorage.removeItem(PORTAL_TOKEN_KEY);
       window.location.reload();
       throw new Error("Session expired");
     }
@@ -106,7 +106,7 @@ function fmtDate(iso: string | null): string {
 /* Login screen                                                        */
 /* ------------------------------------------------------------------ */
 
-function KioskLogin({ onLogin }: { onLogin: () => void }) {
+function StaffPortalLogin({ onLogin }: { onLogin: () => void }) {
   const [employeeNumber, setEmployeeNumber] = useState("");
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -117,11 +117,11 @@ function KioskLogin({ onLogin }: { onLogin: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      const data = await kapi<{ access_token: string }>("/auth/kiosk", {
+      const data = await kapi<{ access_token: string }>("/auth/staff-portal", {
         method: "POST",
         body: JSON.stringify({ employee_number: employeeNumber, pin }),
       });
-      localStorage.setItem(KIOSK_TOKEN_KEY, data.access_token);
+      localStorage.setItem(PORTAL_TOKEN_KEY, data.access_token);
       onLogin();
     } catch (err) {
       setError((err as Error).message);
@@ -142,7 +142,7 @@ function KioskLogin({ onLogin }: { onLogin: () => void }) {
               <Plane className="w-5 h-5 text-white" />
             </div>
             <div>
-              <div className="text-xl font-extrabold tracking-tight text-slate-900 leading-none">Staff Kiosk</div>
+              <div className="text-xl font-extrabold tracking-tight text-slate-900 leading-none">Staff Portal</div>
               <div className="text-xs text-slate-500 mt-1">Shared shift terminal</div>
             </div>
           </div>
@@ -187,7 +187,7 @@ function KioskLogin({ onLogin }: { onLogin: () => void }) {
                   Checking…
                 </>
               ) : (
-                "Clock in to the kiosk"
+                "Clock in to the portal"
               )}
             </button>
           </form>
@@ -220,7 +220,7 @@ function ClockWidget({ home, onChanged }: { home: HomeData; onChanged: () => voi
     setBusy(action);
     setMessage(null);
     try {
-      await kapi("/kiosk/clock", { method: "POST", body: JSON.stringify({ action }) });
+      await kapi("/staff-portal/clock", { method: "POST", body: JSON.stringify({ action }) });
       setMessage(action === "in" ? "Clocked in — have a good shift." : "Clocked out — see you next shift.");
       onChanged();
     } catch (err) {
@@ -281,7 +281,7 @@ function ClockWidget({ home, onChanged }: { home: HomeData; onChanged: () => voi
 const CASE_CATEGORIES = ["grievance", "disciplinary", "harassment", "performance", "wellness", "attendance", "other"];
 const CASE_SEVERITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
 
-function KioskDashboard({ onLogout }: { onLogout: () => void }) {
+function StaffPortalDashboard({ onLogout }: { onLogout: () => void }) {
   const [tab, setTab] = useState<"today" | "shifts" | "leave" | "cases">("today");
   const [home, setHome] = useState<HomeData | null>(null);
   const [shifts, setShifts] = useState<ShiftRow[] | null>(null);
@@ -291,7 +291,7 @@ function KioskDashboard({ onLogout }: { onLogout: () => void }) {
 
   async function loadHome() {
     try {
-      setHome(await kapi<HomeData>("/kiosk/home"));
+      setHome(await kapi<HomeData>("/staff-portal/home"));
     } catch (e) {
       setError((e as Error).message);
     }
@@ -300,10 +300,10 @@ function KioskDashboard({ onLogout }: { onLogout: () => void }) {
   async function load() {
     setError(null);
     const [h, s, t, c] = await Promise.all([
-      kapi<HomeData>("/kiosk/home"),
-      kapi<ShiftRow[]>("/kiosk/shifts"),
-      kapi<LeaveType[]>("/kiosk/leave-types"),
-      kapi<CaseRow[]>("/kiosk/cases"),
+      kapi<HomeData>("/staff-portal/home"),
+      kapi<ShiftRow[]>("/staff-portal/shifts"),
+      kapi<LeaveType[]>("/staff-portal/leave-types"),
+      kapi<CaseRow[]>("/staff-portal/cases"),
     ]);
     setHome(h);
     setShifts(s);
@@ -338,7 +338,7 @@ function KioskDashboard({ onLogout }: { onLogout: () => void }) {
               <Plane className="w-5 h-5 text-white" />
             </div>
             <div>
-              <div className="text-lg font-extrabold tracking-tight text-white leading-none">Staff Kiosk</div>
+              <div className="text-lg font-extrabold tracking-tight text-white leading-none">Staff Portal</div>
               {home && (
                 <div className="text-xs text-slate-400 mt-1">
                   {home.employee.first_name} {home.employee.last_name} · {home.employee.job_title} · {home.employee.employee_number}
@@ -374,7 +374,7 @@ function KioskDashboard({ onLogout }: { onLogout: () => void }) {
         {error && <ErrorMessage message={error} />}
 
         {!home ? (
-          <Loading label="Loading kiosk…" />
+          <Loading label="Loading portal…" />
         ) : tab === "today" ? (
           <div className="grid gap-4 md:grid-cols-2 animate-fade-in-up">
             <ClockWidget home={home} onChanged={loadHome} />
@@ -458,7 +458,7 @@ function LeaveTab({ types, employeeId, onChanged }: { types: LeaveType[] | null;
   const [balance, setBalance] = useState<BalanceRow[] | null>(null);
 
   useEffect(() => {
-    kapi<BalanceRow[]>("/kiosk/balance").then(setBalance).catch(() => setBalance([]));
+    kapi<BalanceRow[]>("/staff-portal/balance").then(setBalance).catch(() => setBalance([]));
   }, []);
 
   async function submit(e: FormEvent) {
@@ -467,7 +467,7 @@ function LeaveTab({ types, employeeId, onChanged }: { types: LeaveType[] | null;
     setBusy(true);
     setMessage(null);
     try {
-      const r = await kapi<{ request_number: string; status: string }>("/kiosk/leave", {
+      const r = await kapi<{ request_number: string; status: string }>("/staff-portal/leave", {
         method: "POST",
         body: JSON.stringify({
           employee_id: employeeId,
@@ -558,7 +558,7 @@ function CasesTab({ cases, employeeId, onChanged }: { cases: CaseRow[] | null; e
     setBusy(true);
     setMessage(null);
     try {
-      const r = await kapi<{ case_number: string; status: string }>("/kiosk/case", {
+      const r = await kapi<{ case_number: string; status: string }>("/staff-portal/case", {
         method: "POST",
         body: JSON.stringify({
           employee_id: employeeId,
@@ -644,14 +644,14 @@ function CasesTab({ cases, employeeId, onChanged }: { cases: CaseRow[] | null; e
 /* Page                                                                */
 /* ------------------------------------------------------------------ */
 
-export default function Kiosk() {
-  const [loggedIn, setLoggedIn] = useState(() => Boolean(localStorage.getItem(KIOSK_TOKEN_KEY)));
+export default function StaffPortal() {
+  const [loggedIn, setLoggedIn] = useState(() => Boolean(localStorage.getItem(PORTAL_TOKEN_KEY)));
 
   function logout() {
-    localStorage.removeItem(KIOSK_TOKEN_KEY);
+    localStorage.removeItem(PORTAL_TOKEN_KEY);
     setLoggedIn(false);
   }
 
-  if (!loggedIn) return <KioskLogin onLogin={() => setLoggedIn(true)} />;
-  return <KioskDashboard onLogout={logout} />;
+  if (!loggedIn) return <StaffPortalLogin onLogin={() => setLoggedIn(true)} />;
+  return <StaffPortalDashboard onLogout={logout} />;
 }

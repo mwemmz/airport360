@@ -1,4 +1,4 @@
-"""Frontline-staff kiosk surface.
+"""Frontline-staff portal surface.
 
 A deliberately narrow read/write API for shared-terminal use by bottom-level
 shift staff (security, ground, baggage, cleaning). Only the Frontline Staff
@@ -13,17 +13,17 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..attendance_service import kiosk_clock
+from ..attendance_service import staff_portal_clock
 from ..audit import log_action
 from ..deps import CurrentUser, DbSession, require_roles
 from ..hr_cases import create_case
 from ..leave_service import create_leave_request, list_balances
 from ..models.core import Employee
 from ..models.hr import HrCase, LeaveType, Shift, ShiftAssignment, TimeLog
-from ..schemas import HrCaseCreate, KioskClockIn, LeaveRequestCreate, LeaveTypeOut, TimeLogOut
+from ..schemas import HrCaseCreate, LeaveRequestCreate, LeaveTypeOut, StaffPortalClockIn, TimeLogOut
 from ..security import ROLE_FRONTLINE
 
-router = APIRouter(prefix="/kiosk", tags=["kiosk"])
+router = APIRouter(prefix="/staff-portal", tags=["staff-portal"])
 
 
 def _current_employee(db: Session, current: CurrentUser) -> Employee:
@@ -36,7 +36,7 @@ def _current_employee(db: Session, current: CurrentUser) -> Employee:
 
 
 @router.get("/home")
-def kiosk_home(
+def staff_portal_home(
     db: DbSession = None,
     current: Annotated[CurrentUser, Depends(require_roles(ROLE_FRONTLINE))] = None,
 ):
@@ -76,22 +76,22 @@ def kiosk_home(
 
 
 @router.post("/clock", response_model=TimeLogOut, status_code=status.HTTP_200_OK)
-def kiosk_clock_endpoint(
-    body: KioskClockIn,
+def staff_portal_clock_endpoint(
+    body: StaffPortalClockIn,
     db: DbSession = None,
     request: Request = None,
     current: Annotated[CurrentUser, Depends(require_roles(ROLE_FRONTLINE))] = None,
 ):
     emp = _current_employee(db, current)
-    log = kiosk_clock(db, emp.id, emp.site_id, body.action)
-    log_action(db, current.user.id, current.site_id, "kiosk_clock", "time_log", log.id, f"employee={emp.id} action={body.action}", request)
+    log = staff_portal_clock(db, emp.id, emp.site_id, body.action)
+    log_action(db, current.user.id, current.site_id, "staff_portal_clock", "time_log", log.id, f"employee={emp.id} action={body.action}", request)
     db.commit()
     db.refresh(log)
     return log
 
 
 @router.get("/shifts")
-def kiosk_shifts(
+def staff_portal_shifts(
     db: DbSession = None,
     current: Annotated[CurrentUser, Depends(require_roles(ROLE_FRONTLINE))] = None,
 ):
@@ -124,7 +124,7 @@ def kiosk_shifts(
 
 
 @router.get("/leave-types", response_model=list[LeaveTypeOut])
-def kiosk_leave_types(
+def staff_portal_leave_types(
     db: DbSession = None,
     current: Annotated[CurrentUser, Depends(require_roles(ROLE_FRONTLINE))] = None,
 ):
@@ -136,7 +136,7 @@ def kiosk_leave_types(
 
 
 @router.post("/leave", status_code=status.HTTP_201_CREATED)
-def kiosk_request_leave(
+def staff_portal_request_leave(
     body: LeaveRequestCreate,
     db: DbSession = None,
     request: Request = None,
@@ -144,18 +144,18 @@ def kiosk_request_leave(
 ):
     emp = _current_employee(db, current)
     if body.employee_id != emp.id:
-        raise HTTPException(status_code=403, detail="Kiosk leave requests are limited to your own record")
+        raise HTTPException(status_code=403, detail="Portal leave requests are limited to your own record")
     req = create_leave_request(
         db, current, emp.id, body.leave_type_id, body.start_date, body.end_date, body.reason, current.user.id
     )
-    log_action(db, current.user.id, current.site_id, "kiosk_request_leave", "leave_request", req.id, req.request_number, request)
+    log_action(db, current.user.id, current.site_id, "staff_portal_request_leave", "leave_request", req.id, req.request_number, request)
     db.commit()
     db.refresh(req)
     return {"id": req.id, "request_number": req.request_number, "status": req.status}
 
 
 @router.get("/balance")
-def kiosk_balance(
+def staff_portal_balance(
     db: DbSession = None,
     current: Annotated[CurrentUser, Depends(require_roles(ROLE_FRONTLINE))] = None,
 ):
@@ -164,7 +164,7 @@ def kiosk_balance(
 
 
 @router.get("/cases")
-def kiosk_cases(
+def staff_portal_cases(
     db: DbSession = None,
     current: Annotated[CurrentUser, Depends(require_roles(ROLE_FRONTLINE))] = None,
 ):
@@ -187,7 +187,7 @@ def kiosk_cases(
 
 
 @router.post("/case", status_code=status.HTTP_201_CREATED)
-def kiosk_open_case(
+def staff_portal_open_case(
     body: HrCaseCreate,
     db: DbSession = None,
     request: Request = None,
@@ -195,8 +195,8 @@ def kiosk_open_case(
 ):
     emp = _current_employee(db, current)
     if body.employee_id != emp.id:
-        raise HTTPException(status_code=403, detail="Kiosk cases are limited to your own record")
+        raise HTTPException(status_code=403, detail="Portal cases are limited to your own record")
     case = create_case(db, current, emp.site_id, emp.id, body.category, body.title, body.description, body.severity)
-    log_action(db, current.user.id, current.site_id, "kiosk_open_case", "hr_case", case.id, case.case_number, request)
+    log_action(db, current.user.id, current.site_id, "staff_portal_open_case", "hr_case", case.id, case.case_number, request)
     db.commit()
     return {"id": case.id, "case_number": case.case_number, "status": case.status}
