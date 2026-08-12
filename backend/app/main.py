@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from . import models  # noqa: F401  (import models so metadata is populated for create_all)
 from .config import get_settings
 from .database import Base, engine, ensure_column
-from .seed import backfill_frontline_pins, seed_all
+from .seed import backfill_frontline_pins, backfill_upcoming_shifts, seed_all
 from .routers import (
     ai,
     alerts,
@@ -191,3 +191,11 @@ def _seed_in_background():
         backfill_frontline_pins()
     except Exception:
         logger.exception("backfill_frontline_pins() failed (app stays up)")
+
+    # Pre-existing databases only have roster assignments in the completed demo
+    # month, which the staff portal (work_date >= today) never shows. Backfill
+    # the next two weeks of assignments (no-op when already present).
+    try:
+        backfill_upcoming_shifts()
+    except Exception:
+        logger.exception("backfill_upcoming_shifts() failed (app stays up)")

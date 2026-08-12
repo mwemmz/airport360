@@ -4,9 +4,7 @@ import { Badge, Card, EmptyState, ErrorMessage, Loading, PageHeader, ScrollTable
 import { api } from "../api";
 import { useApi } from "../useApi";
 
-/* ------------------------------------------------------------------ */
-/* Types                                                               */
-/* ------------------------------------------------------------------ */
+type AppUser = { id: number; full_name: string; email: string; role: { name: string }; site_id: number; active: boolean };
 
 type Employee = {
   id: number;
@@ -319,8 +317,14 @@ function OverviewTab({ employees, departments, training, props }: { employees: E
   const activeCount = employees.filter((e) => e.employment_status === "Active").length;
 
   const empName = (id: number) => {
-    const e = employees.find((x) => x.id === id);
+    const e = (employees.data ?? []).find((x: Employee) => x.id === id);
     return e ? `${e.first_name} ${e.last_name}` : `#${id}`;
+  };
+
+  const assigneeName = (id: number | null) => {
+    if (!id) return null;
+    const u = (assignees.data ?? []).find((x: AppUser) => x.id === id);
+    return u ? u.full_name : `user #${id}`;
   };
   const trained = training.map((t) => ({ ...t, employee_name: empName(t.employee_id) })).sort(
     (a, b) => a.employee_name.localeCompare(b.employee_name) || a.course_name.localeCompare(b.course_name)
@@ -1277,6 +1281,7 @@ function CasesTab({ props }: { props: RoleProps }) {
   const cases = useApi<HrCase[]>("/hr/cases");
   const analytics = useApi<CaseAnalytics>(props.isStaff ? null : "/hr/cases/analytics");
   const employees = useApi<Employee[]>(props.isHr ? "/hr/employees" : null);
+  const assignees = useApi<AppUser[]>(props.isHr ? "/hr/cases/assignees" : null);
 
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -1285,6 +1290,8 @@ function CasesTab({ props }: { props: RoleProps }) {
   const [noteText, setNoteText] = useState("");
   const [privateNote, setPrivateNote] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [assignFor, setAssignFor] = useState<Record<number, string>>({});
+  const [resolutionText, setResolutionText] = useState<Record<number, string>>({});
 
   async function createCase(e: FormEvent) {
     e.preventDefault();
@@ -1345,11 +1352,29 @@ function CasesTab({ props }: { props: RoleProps }) {
     try {
       await api(`/hr/cases/${caseId}/status`, {
         method: "POST",
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, resolution_notes: resolutionText[caseId] || null }),
       });
       setMessage(`Case moved to ${status}.`);
+      setResolutionText((r) => ({ ...r, [caseId]: "" }));
       cases.refresh();
       analytics.refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function assignCase(caseId: number, assigneeId: number) {
+    if (!assigneeId) return;
+    setError(null);
+    setMessage(null);
+    try {
+      await api(`/hr/cases/${caseId}/assign`, {
+        method: "POST",
+        body: JSON.stringify({ assignee_user_id: assigneeId }),
+      });
+      setMessage("Case assigned.");
+      setAssignFor((a) => ({ ...a, [caseId]: "" }));
+      cases.refresh();
     } catch (err) {
       setError((err as Error).message);
     }
@@ -1408,11 +1433,37 @@ function CasesTab({ props }: { props: RoleProps }) {
                   <Badge tone={severityTone(c.severity)}>{c.severity}</Badge>
                   <Badge tone="slate">{c.category}</Badge>
                   <Badge tone={caseTone(c.status)} dot>{c.status}</Badge>
+                  {c.assigned_user_id && <Badge tone="blue">Assigned: {assigneeName(c.assigned_user_id)}</Badge>}
                   <div className="ml-auto flex flex-wrap gap-1">
+                    {props.isHr && (
+                      <>
+                        <select
+                          value={assignFor[c.id] ?? ""}
+                          onChange={(e) => setAssignFor((s) => ({ ...s, [c.id]: e.target.value }))}
+                          className="rounded border border-slate-300 px-1.5 py-0.5 text-xs"
+                        >
+                          <option value="">Assign to…</option>
+                          {(assignees.data ?? []).map((u) => (
+                            <option key={u.id} value={u.id}>{u.full_name}</option>
+                          ))}
+                        </select>
+                        <button onClick={() => assignCase(c.id, Number(assignFor[c.id]))} disabled={!assignFor[c.id]} className="rounded-md bg-indigo-600 px-2 py-1 text-xs text-white hover:bg-indigo-700 disabled:opacity-40">Assign</button>
+                      </>
+                    )}
                     {props.isHr && nextStatus(c.status) && (
-                      <button onClick={() => transition(c.id, nextStatus(c.status)!)} className="rounded-md bg-brand-600 px-2 py-1 text-xs text-white hover:bg-brand-700">
-                        Move to {nextStatus(c.status)}
-                      </button>
+                      <div className="flex items-center gap-1">
+                        {nextStatus(c.status) === "Resolved" && (
+                          <input
+                            value={resolutionText[c.id] ?? ""}
+                            onChange={(e) => setResolutionText((r) => ({ ...r, [c.id]: e.target.value }))}
+                            placeholder="Resolution notes…"
+                            className="rounded border border-slate-300 px-2 py-1 text-xs w-32"
+                          />
+                        )}
+                        <button onClick={() => transition(c.id, nextStatus(c.status)!)} className="rounded-md bg-brand-600 px-2 py-1 text-xs text-white hover:bg-brand-700">
+                          Move to {nextStatus(c.status)}
+                        </button>
+                      </div>
                     )}
                     <button onClick={() => loadNotes(c.id)} className="rounded-md bg-slate-100 px-2 py-1 text-xs hover:bg-slate-200">
                       {expanded === c.id ? "Hide notes" : "Notes"}
@@ -1502,7 +1553,32 @@ function CasesTab({ props }: { props: RoleProps }) {
 /* Roster tab                                                          */
 /* ------------------------------------------------------------------ */
 
-function RosterTab() {
+type AssignmentRow = {
+  id: number;
+  employee_id: number;
+  employee_number: string;
+  employee_name: string;
+  shift_id: number;
+  shift_name: string;
+  work_date: string;
+  status: string;
+  note: string | null;
+};
+type ConflictEmployee = { id: number; employee_number: string; full_name: string; job_title: string; department_id: number };
+type RosterConflict = {
+  date: string;
+  shift_id: number;
+  shift_name: string;
+  shift_type: string;
+  is_night: boolean;
+  min_staff: number;
+  assigned: number;
+  shortage: number;
+  eligible_employees: ConflictEmployee[];
+};
+
+function RosterTab({ props }: { props: RoleProps }) {
+  const canEdit = props.isHr;
   const [from, setFrom] = useState(lastCalendarMonthRange().start);
   const [to, setTo] = useState(lastCalendarMonthRange().end);
   const params = `start=${from}&end=${to}`;
@@ -1510,9 +1586,125 @@ function RosterTab() {
   const shifts = useApi<Shift[]>("/hr/roster/shifts");
   const roster = useApi<{ site_id: number; start: string; end: string; days: RosterDay[] }>(`/hr/roster?${params}`);
   const cost = useApi<RosterCost>(`/hr/roster/cost?${params}`);
+  const assignments = useApi<AssignmentRow[]>(`/hr/roster/assignments?${params}`);
+  const conflicts = useApi<RosterConflict[]>(`/hr/roster/conflicts?${params}`);
+  const employees = useApi<Employee[]>(canEdit ? "/hr/employees" : null);
+  const departments = useApi<Department[]>(canEdit ? "/hr/departments" : null);
+
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [editShiftId, setEditShiftId] = useState<number | null>(null);
+  const [newShiftOpen, setNewShiftOpen] = useState(false);
+  const [editAssignId, setEditAssignId] = useState<number | null>(null);
+  const [swapFor, setSwapFor] = useState<Record<number, string>>({});
+  const [busy, setBusy] = useState(false);
+
+  async function run(url: string, method: string, body?: unknown) {
+    setError(null);
+    setMessage(null);
+    try {
+      await api(url, { method, body: body === undefined ? undefined : JSON.stringify(body) });
+      shifts.refresh();
+      roster.refresh();
+      cost.refresh();
+      assignments.refresh();
+      conflicts.refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function saveShift(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    const fd = new FormData(e.target as HTMLFormElement);
+    const payload = {
+      name: String(fd.get("name")),
+      start_time: String(fd.get("start_time")),
+      end_time: String(fd.get("end_time")),
+      shift_type: String(fd.get("shift_type")),
+      standard_hours: Number(fd.get("standard_hours")),
+      min_staff: Number(fd.get("min_staff")),
+      department_id: fd.get("department_id") ? Number(fd.get("department_id")) : null,
+    };
+    try {
+      if (editShiftId) {
+        await api(`/hr/roster/shifts/${editShiftId}`, { method: "PUT", body: JSON.stringify(payload) });
+        setMessage("Shift updated.");
+        setEditShiftId(null);
+      } else {
+        await api("/hr/roster/shifts", { method: "POST", body: JSON.stringify(payload) });
+        setMessage("Shift created.");
+        setNewShiftOpen(false);
+      }
+      shifts.refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deactivateShift(id: number, name: string) {
+    if (!window.confirm(`Deactivate shift "${name}"? It will leave the pickers but keep its history.`)) return;
+    await run(`/hr/roster/shifts/${id}`, "DELETE");
+  }
+
+  async function saveAssignment(e: FormEvent) {
+    e.preventDefault();
+    if (editAssignId === null) return;
+    setBusy(true);
+    const fd = new FormData(e.target as HTMLFormElement);
+    try {
+      await api(`/hr/roster/assignments/${editAssignId}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          employee_id: Number(fd.get("employee_id")),
+          shift_id: Number(fd.get("shift_id")),
+          work_date: String(fd.get("work_date")),
+        }),
+      });
+      setMessage("Assignment updated.");
+      setEditAssignId(null);
+      assignments.refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function unassign(id: number, label: string) {
+    if (!window.confirm(`Remove ${label} from this assignment?`)) return;
+    await run(`/hr/roster/assignments/${id}`, "DELETE");
+  }
+
+  async function doSwap(assignment: AssignmentRow, otherEmployeeId: number) {
+    if (!otherEmployeeId) return;
+    if (!window.confirm(`Swap ${assignment.employee_name} with ${employeeLabel(otherEmployeeId)} on ${assignment.work_date}?`)) return;
+    await run(`/hr/roster/assignments/${assignment.id}/swap?other_employee_id=${otherEmployeeId}`, "PUT");
+    setSwapFor((s) => ({ ...s, [assignment.id]: "" }));
+  }
+
+  async function fillConflict(conflict: RosterConflict, employeeId: number) {
+    if (!employeeId) return;
+    await run("/hr/roster/assignments", "POST", {
+      employee_id: employeeId,
+      shift_id: conflict.shift_id,
+      work_date: conflict.date,
+    });
+  }
+
+  function employeeLabel(id: number): string {
+    const e = employees.data?.find((x) => x.id === id);
+    return e ? `${e.first_name} ${e.last_name}` : `#${id}`;
+  }
 
   return (
     <div>
+      <ErrorMessage message={error} />
+      {message && <div className="rounded-md bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-700 mb-4">{message}</div>}
+
       <Card className="mb-6" title="Period">
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-xs text-slate-500">
@@ -1530,24 +1722,87 @@ function RosterTab() {
         <Stat label="Understaffed days" value={cost.data?.understaffed_days ?? 0} tone="rose" />
         <Stat label="Overtime hours" value={cost.data ? money(cost.data.total_overtime_hours) : 0} tone="amber" />
         <Stat label="Night hours" value={cost.data ? money(cost.data.total_night_hours) : 0} tone="cyan" />
-        <Stat label="Holiday days" value={cost.data?.public_holiday_days ?? 0} tone="indigo" />
+        <Stat label="Open conflicts" value={conflicts.data?.length ?? 0} tone="indigo" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card title="Shifts">
+        <Card
+          title="Shifts"
+          actions={
+            canEdit && (
+              <button onClick={() => { setNewShiftOpen((v) => !v); setEditShiftId(null); }} className="rounded-md bg-brand-600 px-3 py-1.5 text-sm text-white hover:bg-brand-700">
+                {newShiftOpen ? "Close" : "New shift"}
+              </button>
+            )
+          }
+        >
+          {newShiftOpen && canEdit && (
+            <form onSubmit={saveShift} className="mb-4 grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <input name="name" placeholder="Name" required className="rounded border border-slate-300 px-2 py-1 text-sm" />
+              <input name="shift_type" defaultValue="day" placeholder="Type" className="rounded border border-slate-300 px-2 py-1 text-sm" />
+              <label className="text-xs text-slate-500">Start
+                <input name="start_time" type="time" defaultValue="08:00" required className="mt-0.5 block w-full rounded border border-slate-300 px-2 py-1 text-sm" />
+              </label>
+              <label className="text-xs text-slate-500">End
+                <input name="end_time" type="time" defaultValue="16:00" required className="mt-0.5 block w-full rounded border border-slate-300 px-2 py-1 text-sm" />
+              </label>
+              <input name="min_staff" type="number" defaultValue={1} min={1} required placeholder="Min staff" className="rounded border border-slate-300 px-2 py-1 text-sm" />
+              <input name="standard_hours" type="number" step="0.5" defaultValue={8} required placeholder="Std hours" className="rounded border border-slate-300 px-2 py-1 text-sm" />
+              <select name="department_id" className="rounded border border-slate-300 px-2 py-1 text-sm col-span-2">
+                <option value="">All departments</option>
+                {(departments.data ?? []).map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+              <button disabled={busy} className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm text-white disabled:opacity-50 col-span-2">Create shift</button>
+            </form>
+          )}
           {shifts.loading ? (
             <Loading />
           ) : (
             <div className="space-y-2">
-              {(shifts.data ?? []).map((s) => (
-                <div key={s.id} className="rounded-xl bg-white/60 border border-slate-200 px-3 py-2 flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-semibold">{s.name} {s.is_night && <Badge tone="blue">Night</Badge>}</div>
-                    <div className="text-[11px] text-slate-500">{clock(s.start_time)}–{clock(s.end_time)} · min {s.min_staff} staff</div>
+              {(shifts.data ?? []).map((s) =>
+                editShiftId === s.id ? (
+                  <form key={s.id} onSubmit={saveShift} className="rounded-xl border border-slate-200 bg-slate-50 p-3 grid grid-cols-2 gap-2">
+                    <input name="name" defaultValue={s.name} required placeholder="Name" className="rounded border border-slate-300 px-2 py-1 text-sm" />
+                    <input name="shift_type" defaultValue={s.shift_type} className="rounded border border-slate-300 px-2 py-1 text-sm" />
+                    <label className="text-xs text-slate-500">Start
+                      <input name="start_time" type="time" defaultValue={clock(s.start_time)} required className="mt-0.5 block w-full rounded border border-slate-300 px-2 py-1 text-sm" />
+                    </label>
+                    <label className="text-xs text-slate-500">End
+                      <input name="end_time" type="time" defaultValue={clock(s.end_time)} required className="mt-0.5 block w-full rounded border border-slate-300 px-2 py-1 text-sm" />
+                    </label>
+                    <input name="min_staff" type="number" defaultValue={s.min_staff} min={1} required className="rounded border border-slate-300 px-2 py-1 text-sm" />
+                    <input name="standard_hours" type="number" step="0.5" defaultValue={s.standard_hours} required className="rounded border border-slate-300 px-2 py-1 text-sm" />
+                    <select name="department_id" defaultValue={s.department_id ?? ""} className="rounded border border-slate-300 px-2 py-1 text-sm col-span-2">
+                      <option value="">All departments</option>
+                      {(departments.data ?? []).map((d) => (
+                        <option key={d.id} value={d.id}>{d.name}</option>
+                      ))}
+                    </select>
+                    <button disabled={busy} className="rounded-md bg-emerald-600 px-3 py-1 text-xs text-white disabled:opacity-50">Save</button>
+                    <button type="button" onClick={() => setEditShiftId(null)} className="rounded-md bg-slate-200 px-3 py-1 text-xs">Cancel</button>
+                  </form>
+                ) : (
+                  <div key={s.id} className="rounded-xl bg-white/60 border border-slate-200 px-3 py-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm font-semibold">{s.name} {s.is_night && <Badge tone="blue">Night</Badge>}</div>
+                        <div className="text-[11px] text-slate-500">{clock(s.start_time)}–{clock(s.end_time)} · min {s.min_staff} staff</div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-slate-500 tabular-nums mr-1">{s.standard_hours}h</span>
+                        {canEdit && (
+                          <>
+                            <button onClick={() => { setEditShiftId(s.id); setNewShiftOpen(false); }} className="text-xs text-indigo-600 hover:underline">Edit</button>
+                            <button onClick={() => deactivateShift(s.id, s.name)} className="text-xs text-rose-600 hover:underline">Deactivate</button>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <span className="text-xs text-slate-500 tabular-nums">{s.standard_hours}h</span>
-                </div>
-              ))}
+                )
+              )}
             </div>
           )}
         </Card>
@@ -1597,6 +1852,99 @@ function RosterTab() {
                 </tbody>
               </table>
             </ScrollTable>
+          )}
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+        <Card title={`Assignments (${assignments.data?.length ?? 0})`}>
+          {assignments.loading ? (
+            <Loading />
+          ) : (assignments.data?.length ?? 0) === 0 ? (
+            <EmptyState title="No assignments in range" />
+          ) : (
+            <div className="space-y-2">
+              {(assignments.data ?? []).map((a) =>
+                editAssignId === a.id ? (
+                  <form key={a.id} onSubmit={saveAssignment} className="rounded-xl border border-slate-200 bg-slate-50 p-3 grid grid-cols-2 gap-2">
+                    <select name="employee_id" defaultValue={a.employee_id} required className="rounded border border-slate-300 px-2 py-1 text-sm col-span-2">
+                      {(employees.data ?? []).map((e) => (
+                        <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>
+                      ))}
+                    </select>
+                    <select name="shift_id" defaultValue={a.shift_id} required className="rounded border border-slate-300 px-2 py-1 text-sm col-span-2">
+                      {(shifts.data ?? []).map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                    <input name="work_date" type="date" defaultValue={a.work_date} required className="rounded border border-slate-300 px-2 py-1 text-sm" />
+                    <button disabled={busy} className="rounded-md bg-emerald-600 px-3 py-1 text-xs text-white disabled:opacity-50">Save</button>
+                    <button type="button" onClick={() => setEditAssignId(null)} className="rounded-md bg-slate-200 px-3 py-1 text-xs">Cancel</button>
+                  </form>
+                ) : (
+                  <div key={a.id} className="rounded-xl bg-white/60 border border-slate-200 px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold">{a.employee_name}</span>
+                      <span className="text-[11px] text-slate-400">{a.employee_number}</span>
+                      <Badge tone={a.status === "Assigned" ? "green" : "slate"}>{a.status}</Badge>
+                      <span className="text-xs text-slate-500 ml-auto">{fmtDate(a.work_date)} · {a.shift_name}</span>
+                    </div>
+                    {canEdit && (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                        <button onClick={() => setEditAssignId(a.id)} className="text-xs text-indigo-600 hover:underline">Reassign</button>
+                        <button onClick={() => unassign(a.id, a.employee_name)} className="text-xs text-rose-600 hover:underline">Unassign</button>
+                        <select value={swapFor[a.id] ?? ""} onChange={(e) => setSwapFor((s) => ({ ...s, [a.id]: e.target.value }))} className="ml-auto rounded border border-slate-300 px-1.5 py-0.5 text-xs">
+                          <option value="">Swap with…</option>
+                          {(employees.data ?? [])
+                            .filter((e) => e.id !== a.employee_id && e.employment_status === "Active")
+                            .map((e) => (
+                              <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>
+                            ))}
+                        </select>
+                        <button onClick={() => doSwap(a, Number(swapFor[a.id]))} disabled={!swapFor[a.id]} className="rounded-md bg-indigo-600 px-2 py-0.5 text-xs text-white disabled:opacity-40">Swap</button>
+                      </div>
+                    )}
+                  </div>
+                )
+              )}
+            </div>
+          )}
+        </Card>
+
+        <Card title="Coverage conflicts">
+          {conflicts.loading ? (
+            <Loading />
+          ) : (conflicts.data?.length ?? 0) === 0 ? (
+            <EmptyState title="No conflicts in range" hint="Every active shift meets its minimum staff." />
+          ) : (
+            <div className="space-y-2">
+              {(conflicts.data ?? []).slice(0, 40).map((c) => (
+                <div key={`${c.date}-${c.shift_id}`} className="rounded-xl bg-white/60 border border-slate-200 px-3 py-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-semibold">{fmtDate(c.date)}</span>
+                    <span className="text-xs text-slate-500">{c.shift_name}</span>
+                    <Badge tone="red">short {c.shortage}</Badge>
+                    <span className="text-[11px] text-slate-400 ml-auto">{c.assigned}/{c.min_staff} staffed</span>
+                  </div>
+                  {canEdit && c.eligible_employees.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                      {(c.eligible_employees).slice(0, 4).map((emp) => (
+                        <button
+                          key={emp.id}
+                          onClick={() => fillConflict(c, emp.id)}
+                          className="rounded-md bg-brand-600 px-2 py-0.5 text-xs text-white hover:bg-brand-700"
+                        >
+                          Assign {emp.full_name}
+                        </button>
+                      ))}
+                      {c.eligible_employees.length > 4 && (
+                        <span className="text-[11px] text-slate-400">+{c.eligible_employees.length - 4} more</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
         </Card>
       </div>
@@ -1768,7 +2116,7 @@ export default function HR() {
       {active === "attendance" && <AttendanceTab props={props} />}
       {active === "payroll" && <PayrollTab props={props} />}
       {active === "cases" && <CasesTab props={props} />}
-      {active === "roster" && <RosterTab />}
+      {active === "roster" && <RosterTab props={props} />}
       {active === "statutory" && <StatutoryTab props={props} />}
     </div>
   );

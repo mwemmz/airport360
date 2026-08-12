@@ -216,6 +216,23 @@ class ExpenseCreate(BaseModel):
     notes: str | None = None
 
 
+class ExpenseUpdate(BaseModel):
+    department_id: int | None = None
+    budget_line_id: int | None = None
+    category: str | None = None
+    vendor: str | None = None
+    amount: float | None = None
+    expense_date: date | None = None
+    notes: str | None = None
+
+
+class BudgetLineUpdate(BaseModel):
+    department_id: int | None = None
+    fiscal_year: int | None = None
+    category: str | None = None
+    allocated: float | None = None
+
+
 class AuditLogOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -370,10 +387,29 @@ class ShiftCreate(BaseModel):
     description: str | None = None
 
 
+class ShiftUpdate(BaseModel):
+    name: str | None = None
+    start_time: str | None = None
+    end_time: str | None = None
+    shift_type: str | None = None
+    standard_hours: float | None = None
+    min_staff: int | None = None
+    department_id: int | None = None
+    description: str | None = None
+    active: bool | None = None
+
+
 class ShiftAssignmentCreate(BaseModel):
     employee_id: int
     shift_id: int
     work_date: date
+    note: str | None = None
+
+
+class ShiftAssignmentUpdate(BaseModel):
+    employee_id: int | None = None
+    shift_id: int | None = None
+    work_date: date | None = None
     note: str | None = None
 
 
@@ -388,6 +424,38 @@ class ShiftAssignmentOut(BaseModel):
     swapped_with_employee_id: int | None
     note: str | None
     created_at: datetime
+
+
+class ShiftAssignmentView(BaseModel):
+    id: int
+    employee_id: int
+    employee_number: str
+    employee_name: str
+    shift_id: int
+    shift_name: str
+    work_date: date
+    status: str
+    note: str | None
+
+
+class ConflictEmployeeOut(BaseModel):
+    id: int
+    employee_number: str
+    full_name: str
+    job_title: str
+    department_id: int
+
+
+class ShiftConflictOut(BaseModel):
+    date: date
+    shift_id: int
+    shift_name: str
+    shift_type: str
+    is_night: bool
+    min_staff: int
+    assigned: int
+    shortage: int
+    eligible_employees: list[ConflictEmployeeOut]
 
 
 class TimeLogCreate(BaseModel):

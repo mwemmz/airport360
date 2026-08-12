@@ -12,6 +12,7 @@ type Expense = {
   vendor: string;
   amount: number;
   expense_date: string;
+  notes: string | null;
 };
 type BudgetRow = {
   id: number;
@@ -34,6 +35,9 @@ export default function Finance() {
 
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingBudgetId, setEditingBudgetId] = useState<number | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
 
   async function addExpense(e: FormEvent) {
     e.preventDefault();
@@ -79,6 +83,71 @@ export default function Finance() {
     }
   }
 
+  async function saveExpense(e: FormEvent) {
+    e.preventDefault();
+    if (editingId === null) return;
+    setError(null);
+    setMessage(null);
+    setBusyId(editingId);
+    const fd = new FormData(e.currentTarget as HTMLFormElement);
+    try {
+      await api(`/finance/expenses/${editingId}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          category: String(fd.get("category")),
+          vendor: String(fd.get("vendor")),
+          amount: Number(fd.get("amount")),
+          expense_date: String(fd.get("expense_date")),
+          notes: String(fd.get("notes") || null),
+        }),
+      });
+      setMessage("Expense updated.");
+      setEditingId(null);
+      expenses.refresh();
+      budgets.refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function deleteExpense(id: number) {
+    if (!window.confirm("Delete this expense? Budget spend will be adjusted.")) return;
+    setError(null);
+    setMessage(null);
+    try {
+      await api(`/finance/expenses/${id}`, { method: "DELETE" });
+      setMessage("Expense deleted.");
+      expenses.refresh();
+      budgets.refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function saveBudget(e: FormEvent) {
+    e.preventDefault();
+    if (editingBudgetId === null) return;
+    setError(null);
+    setMessage(null);
+    setBusyId(editingBudgetId);
+    const fd = new FormData(e.currentTarget as HTMLFormElement);
+    try {
+      await api(`/finance/budgets/${editingBudgetId}`, {
+        method: "PUT",
+        body: JSON.stringify({ allocated: Number(fd.get("allocated")) }),
+      });
+      setMessage("Budget updated.");
+      setEditingBudgetId(null);
+      budgets.refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <div>
       <PageHeader
@@ -100,19 +169,41 @@ export default function Finance() {
                   <th>Allocated</th>
                   <th>Spent</th>
                   <th>Used</th>
+                  {canEdit && <th></th>}
                 </tr>
               </thead>
               <tbody>
                 {(budgets.data ?? []).map((b) => (
                   <tr key={b.id} className="border-b border-slate-100">
                     <td className="py-2">{b.category}</td>
-                    <td>{b.allocated.toLocaleString()}</td>
+                    {editingBudgetId === b.id ? (
+                      <>
+                        <td className="py-2">
+                          <form onSubmit={saveBudget} className="flex items-center gap-2">
+                            <input name="allocated" type="number" step="0.01" defaultValue={b.allocated} required className="rounded border border-slate-300 px-2 py-1 text-sm w-28" />
+                            <button disabled={busyId === b.id} className="rounded-md bg-emerald-600 px-2 py-1 text-xs text-white disabled:opacity-50">Save</button>
+                            <button type="button" onClick={() => setEditingBudgetId(null)} className="rounded-md bg-slate-200 px-2 py-1 text-xs">Cancel</button>
+                          </form>
+                        </td>
+                      </>
+                    ) : (
+                      <td className="py-2">{b.allocated.toLocaleString()}</td>
+                    )}
                     <td>{b.spent.toLocaleString()}</td>
                     <td>
                       <Badge tone={b.utilization_pct > 85 ? "red" : b.utilization_pct > 60 ? "amber" : "green"}>
                         {b.utilization_pct}%
                       </Badge>
                     </td>
+                    {canEdit && (
+                      <td className="text-right">
+                        {editingBudgetId !== b.id && (
+                          <button onClick={() => setEditingBudgetId(b.id)} className="text-xs text-indigo-600 hover:underline">
+                            Edit
+                          </button>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -132,17 +223,40 @@ export default function Finance() {
                   <th>Vendor</th>
                   <th>Amount</th>
                   <th>Date</th>
+                  {canEdit && <th></th>}
                 </tr>
               </thead>
               <tbody>
-                {(expenses.data ?? []).slice(0, 12).map((exp) => (
-                  <tr key={exp.id} className="border-b border-slate-100">
-                    <td className="py-2 font-mono text-xs">{exp.expense_number}</td>
-                    <td>{exp.category}</td>
-                    <td>{exp.vendor}</td>
-                    <td>{exp.amount.toLocaleString()}</td>
-                    <td>{exp.expense_date}</td>
-                  </tr>
+                {(expenses.data ?? []).slice(0, 20).map((exp) => (
+                  editingId === exp.id ? (
+                    <tr key={exp.id} className="border-b border-slate-100 bg-slate-50">
+                      <td className="py-2 font-mono text-xs" colSpan={canEdit ? 6 : 5}>
+                        <form onSubmit={saveExpense} className="flex flex-wrap items-end gap-2">
+                          <input name="category" defaultValue={exp.category} required placeholder="Category" className="rounded border border-slate-300 px-2 py-1 text-sm w-32" />
+                          <input name="vendor" defaultValue={exp.vendor} required placeholder="Vendor" className="rounded border border-slate-300 px-2 py-1 text-sm w-36" />
+                          <input name="amount" type="number" step="0.01" defaultValue={exp.amount} required placeholder="Amount" className="rounded border border-slate-300 px-2 py-1 text-sm w-28" />
+                          <input name="expense_date" type="date" defaultValue={exp.expense_date} required className="rounded border border-slate-300 px-2 py-1 text-sm" />
+                          <input name="notes" defaultValue={exp.notes ?? ""} placeholder="Notes" className="rounded border border-slate-300 px-2 py-1 text-sm flex-1 min-w-[120px]" />
+                          <button disabled={busyId === exp.id} className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs text-white disabled:opacity-50">Save</button>
+                          <button type="button" onClick={() => setEditingId(null)} className="rounded-md bg-slate-200 px-3 py-1.5 text-xs">Cancel</button>
+                        </form>
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr key={exp.id} className="border-b border-slate-100">
+                      <td className="py-2 font-mono text-xs">{exp.expense_number}</td>
+                      <td>{exp.category}</td>
+                      <td>{exp.vendor}</td>
+                      <td>{exp.amount.toLocaleString()}</td>
+                      <td>{exp.expense_date}</td>
+                      {canEdit && (
+                        <td className="py-2 text-right whitespace-nowrap">
+                          <button onClick={() => setEditingId(exp.id)} className="text-xs text-indigo-600 hover:underline mr-2">Edit</button>
+                          <button onClick={() => deleteExpense(exp.id)} className="text-xs text-rose-600 hover:underline">Delete</button>
+                        </td>
+                      )}
+                    </tr>
+                  )
                 ))}
               </tbody>
             </table>

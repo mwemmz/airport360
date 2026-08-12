@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from ..audit import log_action
 from ..deps import CurrentUser, DbSession, assert_site_access, require_roles
@@ -17,7 +17,7 @@ from ..hr_cases import (
     scoped_case_query,
     transition,
 )
-from ..models.core import Employee
+from ..models.core import Employee, Role, User
 from ..models.hr import HrCase
 from ..schemas import (
     HrCaseAssign,
@@ -26,6 +26,7 @@ from ..schemas import (
     HrCaseNoteOut,
     HrCaseOut,
     HrCaseTransition,
+    UserOut,
 )
 from ..security import ROLE_ADMIN, ROLE_APPROVER, ROLE_EXECUTIVE, ROLE_HR, ROLE_STAFF
 
@@ -89,6 +90,26 @@ def list_cases(
         stmt = stmt.where(HrCase.status == status_filter)
     cases = db.scalars(stmt).all()
     return [_serialize(db, c) for c in cases]
+
+
+@router.get("/assignees", response_model=list[UserOut])
+def case_assignees(
+    db: DbSession = None,
+    current: Annotated[CurrentUser, Depends(require_roles(ROLE_ADMIN, ROLE_HR))] = None,
+):
+    """HR/Admin users at the current site who can be assigned a case."""
+    stmt = (
+        select(User)
+        .join(Role, Role.id == User.role_id)
+        .options(selectinload(User.role))
+        .where(
+            User.site_id == current.site_id,
+            User.active.is_(True),
+            Role.name.in_([ROLE_ADMIN, ROLE_HR]),
+        )
+        .order_by(User.full_name)
+    )
+    return [UserOut.model_validate(u) for u in db.scalars(stmt).all()]
 
 
 @router.get("/{case_id}", response_model=HrCaseOut)

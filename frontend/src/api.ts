@@ -104,5 +104,6 @@ export async function api<T>(
     }
     throw new Error(detail);
   }
+  if (resp.status === 204) return undefined as T;
   return resp.json() as Promise<T>;
 }

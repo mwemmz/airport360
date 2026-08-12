@@ -1016,6 +1016,65 @@ def _seed_hr_attendance(db: Session):
 
 
 # ---------------------------------------------------------------------------
+# Chunk 22b: upcoming shifts so the staff-portal "Shifts" tab is never empty
+#
+# The demo roster above intentionally covers only the (completed) previous
+# month, while the staff portal lists assignments with work_date >= today.
+# Without a lookahead the portal shows "No upcoming shifts". This chunk seeds
+# the next two weeks for the same staff and is a no-op once any future
+# assignment exists.
+# ---------------------------------------------------------------------------
+def _seed_upcoming_shifts(db: Session):
+    if db.scalar(select(ShiftAssignment).where(ShiftAssignment.work_date > date.today()).limit(1)):
+        return True
+
+    sites = list(db.scalars(select(Site).order_by(Site.id)))
+    employees = list(db.scalars(select(Employee).order_by(Employee.id)))
+    employees_by_site: dict[int, list[Employee]] = {}
+    for emp in employees:
+        employees_by_site.setdefault(emp.site_id, []).append(emp)
+    shifts = list(db.scalars(select(Shift).order_by(Shift.site_id, Shift.id)))
+    shifts_by_site: dict[int, list[Shift]] = {}
+    for s in shifts:
+        shifts_by_site.setdefault(s.site_id, []).append(s)
+
+    for site in sites:
+        if not shifts_by_site.get(site.id):
+            continue
+        hr_user = db.scalar(select(User).where(User.email == f"hr.{site.code.lower()}@airport360.com"))
+        day_shift = next(s for s in shifts_by_site[site.id] if s.name == "Day")
+        night_shift = next((s for s in shifts_by_site[site.id] if s.name == "Night"), day_shift)
+        site_employees = sorted(employees_by_site.get(site.id, []), key=lambda e: e.id)
+        night_worker_ids = {e.id for e in site_employees[:3]}
+
+        start = date.today() + timedelta(days=1)
+        cur = start
+        while cur <= start + timedelta(days=13):
+            for emp in site_employees:
+                is_night = emp.id in night_worker_ids
+                if is_night:
+                    if cur.weekday() >= 6:
+                        continue
+                    shift = night_shift
+                else:
+                    if cur.weekday() >= 5:
+                        continue
+                    shift = day_shift
+                db.add(
+                    ShiftAssignment(
+                        site_id=site.id,
+                        employee_id=emp.id,
+                        shift_id=shift.id,
+                        work_date=cur,
+                        created_by=hr_user.id if hr_user else None,
+                    )
+                )
+            cur += timedelta(days=1)
+    db.commit()
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Chunk 23: payroll — allowances + a processed demo period with payslips
 # ---------------------------------------------------------------------------
 def _seed_hr_payroll(db: Session):
@@ -1113,6 +1172,24 @@ def _summary() -> str:
         db.close()
 
 
+def backfill_upcoming_shifts() -> None:
+    """Seed the next two weeks of shift assignments so the staff-portal
+    "Shifts" tab has content on pre-existing databases (no-op once present).
+
+    The main demo roster intentionally covers the completed previous month;
+    the portal only lists assignments with work_date >= today, so without a
+    lookahead the portal shows "No upcoming shifts" on an existing database.
+    """
+    db: Session = SeedSession()
+    try:
+        if db.scalar(select(ShiftAssignment).where(ShiftAssignment.work_date > date.today()).limit(1)):
+            return
+        _seed_upcoming_shifts(db)
+        print("[seed] upcoming_shifts: backfilled next two weeks for the staff portal")
+    finally:
+        db.close()
+
+
 def backfill_frontline_pins() -> None:
     """Ensure every site has its two demo frontline-portal logins (PIN 1234).
 
@@ -1199,6 +1276,7 @@ def seed_all() -> None:
     _run_chunk("hr_foundations", _seed_hr_foundations)
     _run_chunk("hr_leave", _seed_hr_leave)
     _run_chunk("hr_attendance", _seed_hr_attendance)
+    _run_chunk("upcoming_shifts", _seed_upcoming_shifts)
     _run_chunk("hr_payroll", _seed_hr_payroll)
     _run_chunk("hr_cases", _seed_hr_cases)
     print(_summary())
