@@ -117,10 +117,29 @@ function StaffPortalLogin({ onLogin }: { onLogin: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      const data = await kapi<{ access_token: string }>("/auth/staff-portal", {
+      const resp = await fetch(`${API_BASE}/v1/auth/staff-portal`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ employee_number: employeeNumber, pin }),
       });
+      if (resp.status === 401) {
+        setError("Invalid employee number or PIN.");
+        setBusy(false);
+        return;
+      }
+      if (!resp.ok) {
+        let detail = `Request failed (${resp.status})`;
+        try {
+          const body = await resp.json();
+          detail = Array.isArray(body.detail) ? body.detail.map((d: { msg: string }) => d.msg).join("; ") : body.detail || detail;
+        } catch {
+          /* ignore */
+        }
+        setError(detail);
+        setBusy(false);
+        return;
+      }
+      const data = await resp.json();
       localStorage.setItem(PORTAL_TOKEN_KEY, data.access_token);
       onLogin();
     } catch (err) {

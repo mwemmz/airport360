@@ -1116,30 +1116,41 @@ def _summary() -> str:
 def backfill_frontline_pins() -> None:
     """Ensure every site has its two demo frontline-portal logins (PIN 1234).
 
-    Pre-existing databases were seeded before the frontline-portal feature, so
-    the ``users`` chunk skips them entirely (users already exist) and no
-    Frontline Staff account has a PIN. This runs on every boot and is a no-op
-    when the accounts are already present.
+    Pre-existing databases were seeded before the frontline-portal feature: the
+    ``users`` chunk skips them entirely (users already exist) and, worse, the
+    roles chunk skipped too, so the ``Frontline Staff`` role may not exist at
+    all. This runs on every boot: creates the role if missing, then creates or
+    PIN-sets the two demo logins per site. It is a no-op once present.
     """
     db: Session = SeedSession()
     try:
         sites = list(db.scalars(select(Site).order_by(Site.id)))
-        roles = list(db.scalars(select(Role).order_by(Role.id)))
+        if not sites:
+            return
         employees = list(db.scalars(select(Employee).order_by(Employee.id)))
         employees_by_site: dict[int, list[Employee]] = {}
         for emp in employees:
             employees_by_site.setdefault(emp.site_id, []).append(emp)
-        role_map = {r.name: r for r in roles}
-        frontline_role = role_map.get(ROLE_FRONTLINE)
-        if not frontline_role or not sites:
-            return
+
+        frontline_role = db.scalar(select(Role).where(Role.name == ROLE_FRONTLINE))
+        if frontline_role is None:
+            frontline_role = Role(name=ROLE_FRONTLINE)
+            db.add(frontline_role)
+            db.flush()
+            print("[seed] staff-portal: created missing 'Frontline Staff' role")
+        role_id = frontline_role.id
+
         for site in sites:
             frontline_emps = [
                 e for e in employees_by_site.get(site.id, []) if e.job_title == "Security Officer"
             ]
+            if not frontline_emps:
+                # Older seeds may use different job titles — fall back to the
+                # first employees of the site so demo PIN logins always exist.
+                frontline_emps = employees_by_site.get(site.id, [])[:2]
             for i, emp in enumerate(frontline_emps[:2]):
                 user = db.scalar(
-                    select(User).where(User.employee_id == emp.id, User.role_id == frontline_role.id)
+                    select(User).where(User.employee_id == emp.id, User.role_id == role_id)
                 )
                 if user is None:
                     user = User(
@@ -1147,7 +1158,7 @@ def backfill_frontline_pins() -> None:
                         full_name=f"{emp.first_name} {emp.last_name}",
                         hashed_password=hash_password("Demo1234!"),
                         pin_hash=hash_password("1234"),
-                        role_id=frontline_role.id,
+                        role_id=role_id,
                         site_id=site.id,
                         employee_id=emp.id,
                     )
@@ -1157,6 +1168,9 @@ def backfill_frontline_pins() -> None:
                     user.pin_hash = hash_password("1234")
                     print(f"[seed] staff-portal: set PIN for {emp.employee_number}")
         db.commit()
+        created = db.scalars(select(User).where(User.role_id == role_id)).all()
+        print(f"[seed] staff-portal: {len(created)} frontline login(s) ready "
+              f"({', '.join(sorted(db.get(Employee, u.employee_id).employee_number for u in created))})")
     finally:
         db.close()
 
