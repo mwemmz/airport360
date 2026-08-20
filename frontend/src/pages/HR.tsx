@@ -317,15 +317,10 @@ function OverviewTab({ employees, departments, training, props }: { employees: E
   const activeCount = employees.filter((e) => e.employment_status === "Active").length;
 
   const empName = (id: number) => {
-    const e = (employees.data ?? []).find((x: Employee) => x.id === id);
+    const e = employees.find((x: Employee) => x.id === id);
     return e ? `${e.first_name} ${e.last_name}` : `#${id}`;
   };
 
-  const assigneeName = (id: number | null) => {
-    if (!id) return null;
-    const u = (assignees.data ?? []).find((x: AppUser) => x.id === id);
-    return u ? u.full_name : `user #${id}`;
-  };
   const trained = training.map((t) => ({ ...t, employee_name: empName(t.employee_id) })).sort(
     (a, b) => a.employee_name.localeCompare(b.employee_name) || a.course_name.localeCompare(b.course_name)
   );
@@ -1385,6 +1380,12 @@ function CasesTab({ props }: { props: RoleProps }) {
     return e ? `${e.first_name} ${e.last_name}` : `#${id}`;
   };
 
+  const assigneeName = (id: number | null) => {
+    if (!id) return null;
+    const u = assignees.data?.find((x) => x.id === id);
+    return u ? (u.full_name ?? `user #${id}`) : `user #${id}`;
+  };
+
   const nextStatus = (current: string): string | null => {
     const map: Record<string, string> = {
       Logged: "Under Review",
@@ -1592,6 +1593,7 @@ function RosterTab({ props }: { props: RoleProps }) {
   const departments = useApi<Department[]>(canEdit ? "/hr/departments" : null);
 
   const [error, setError] = useState<string | null>(null);
+  const derivedError = shifts.error || roster.error || cost.error || assignments.error || conflicts.error || error;
   const [message, setMessage] = useState<string | null>(null);
   const [editShiftId, setEditShiftId] = useState<number | null>(null);
   const [newShiftOpen, setNewShiftOpen] = useState(false);
@@ -1720,6 +1722,7 @@ function RosterTab({ props }: { props: RoleProps }) {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Stat label="Understaffed days" value={cost.data?.understaffed_days ?? 0} tone="rose" />
+        {derivedError && <div className="col-span-4"><ErrorMessage message={derivedError} /></div>}
         <Stat label="Overtime hours" value={cost.data ? money(cost.data.total_overtime_hours) : 0} tone="amber" />
         <Stat label="Night hours" value={cost.data ? money(cost.data.total_night_hours) : 0} tone="cyan" />
         <Stat label="Open conflicts" value={conflicts.data?.length ?? 0} tone="indigo" />
