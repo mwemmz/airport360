@@ -269,6 +269,14 @@ function lastCalendarMonthRange() {
   return { start: iso(start), end: iso(end) };
 }
 
+function rosterDefaultRange() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  return { start: iso(start), end: iso(end) };
+}
+
 function leaveTone(status: string): "slate" | "green" | "amber" | "red" | "blue" {
   if (status === "Approved") return "green";
   if (status === "Requested") return "amber";
@@ -1580,8 +1588,8 @@ type RosterConflict = {
 
 function RosterTab({ props }: { props: RoleProps }) {
   const canEdit = props.isHr;
-  const [from, setFrom] = useState(lastCalendarMonthRange().start);
-  const [to, setTo] = useState(lastCalendarMonthRange().end);
+  const [from, setFrom] = useState(rosterDefaultRange().start);
+  const [to, setTo] = useState(rosterDefaultRange().end);
   const params = `start=${from}&end=${to}`;
 
   const shifts = useApi<Shift[]>("/hr/roster/shifts");
